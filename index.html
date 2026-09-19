@@ -51,7 +51,7 @@
   <div class="container">
     <div class="left">
       <h2>Left Side</h2>
-      <form>
+      <form id="root-idea-form">
         <label for="user-text">Enter text:</label><br>
         <textarea id="user-text" name="user-text" rows="6" style="width:100%;"></textarea><br>
         <button type="submit" style="margin-top:8px;">Submit</button>
@@ -66,6 +66,8 @@
 <script>
 // --- Idea list and drawing logic ---
 let ideas = [];
+let ideaId = 1;
+
 
 const form = document.querySelector('form');
 const textarea = document.getElementById('user-text');
@@ -93,28 +95,95 @@ function drawCircles() {
     return;
   }
 
-  // Draw circles for each idea, spaced horizontally
-  const total = ideas.length;
-  const radius = 40;
-  const padding = 30;
-  const totalWidth = total * (radius*2 + padding) - padding;
-  let startX = (canvas.width - totalWidth) / 2 + radius;
-  const centerY = canvas.height / 2;
-  
-  for (let i = 0; i < total; i++) {
-    const x = startX + i * (radius*2 + padding);
+  // Layout constants
+  const nodeRadius = 32;
+  const vertGap = 40 + nodeRadius * 2; // Vertical space between levels
+  const treeGap = 90 + nodeRadius * 2; // Horizontal space between different trees
+  const marginTop = 40;
+  const marginLeft = 40;
+
+  // Helper function to compute max depth and width of a tree
+  function getTreeHeight(idea) {
+    if (!idea.children || idea.children.length === 0) return 1;
+    return 1 + Math.max(...idea.children.map(getTreeHeight));
+  }
+  function countNodes(idea) {
+    if (!idea.children || idea.children.length === 0) return 1;
+    return 1 + idea.children.map(countNodes).reduce((a, b) => a + b, 0);
+  }
+
+  // Calculate X for each root
+  let treeXs = [];
+  let totalWidthNeeded = 0;
+  for (let i = 0; i < ideas.length; i++) {
+    treeXs.push(marginLeft + totalWidthNeeded);
+    let widthNeeded = 2 * nodeRadius; // Each root gets a column at least a bubble wide
+    widthNeeded += (i < ideas.length-1) ? treeGap : 0;
+    totalWidthNeeded += widthNeeded;
+  }
+
+  // Traverse each tree and assign (x, y) coordinates
+  let allNodes = [];
+  // Improved: Fan out children horizontally, center parent above children.
+  function getSubtreeWidth(idea) {
+    if (!idea.children || idea.children.length === 0) return 1;
+    return idea.children.reduce((sum, ch) => sum + getSubtreeWidth(ch), 0);
+  }
+  let baseRootLeft = marginLeft;
+  for (let t = 0; t < ideas.length; t++) {
+    let treeRoot = ideas[t];
+    let rootTreeWidth = getSubtreeWidth(treeRoot);
+    let treePixelWidth = rootTreeWidth * (2 * nodeRadius + treeGap);
+    let baseX = baseRootLeft + treePixelWidth / 2;
+    let baseY = marginTop;
+    function layoutTree(idea, x, y, parent) {
+      let myWidth = getSubtreeWidth(idea);
+      let node = { idea, x, y, parent };
+      allNodes.push(node);
+      if (!idea.children || idea.children.length === 0) return [x];
+      // Compute total width to span children
+      let totalWidth = idea.children.reduce((sum, ch) => sum + getSubtreeWidth(ch), 0);
+      let leftX = x - (totalWidth * (2 * nodeRadius + treeGap) - treeGap) / 2;
+      let childrenXs = [];
+      let cx = leftX;
+      for (let i = 0; i < idea.children.length; i++) {
+        let w = getSubtreeWidth(idea.children[i]);
+        let childCenter = cx + (w * (2 * nodeRadius + treeGap) - treeGap) / 2;
+        childrenXs = childrenXs.concat(layoutTree(idea.children[i], childCenter, y + vertGap, {x, y}));
+        cx += w * (2 * nodeRadius + treeGap);
+      }
+      return [x];
+    }
+    layoutTree(treeRoot, baseX, baseY, null);
+    baseRootLeft += treePixelWidth + treeGap;
+  }
+
+  // Draw edges
+  ctx.strokeStyle = '#bbb';
+  ctx.lineWidth = 2;
+  for (const node of allNodes) {
+    if (node.parent) {
+      ctx.beginPath();
+      ctx.moveTo(node.parent.x, node.parent.y + nodeRadius);
+      ctx.lineTo(node.x, node.y - nodeRadius);
+      ctx.stroke();
+    }
+  }
+
+  // Draw bubbles (circles with numbers)
+  for (const node of allNodes) {
     ctx.beginPath();
-    ctx.arc(x, centerY, radius, 0, 2 * Math.PI, false);
+    ctx.arc(node.x, node.y, nodeRadius, 0, 2*Math.PI);
     ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#99c2e6';
+    ctx.strokeStyle = '#4c88b3';
     ctx.lineWidth = 4;
     ctx.fill();
     ctx.stroke();
-    ctx.font = 'bold 28px sans-serif';
+    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#579';
-    ctx.fillText(String(ideas[i].id), x, centerY);
+    ctx.fillStyle = '#347';
+    ctx.fillText(String(node.idea.id), node.x, node.y);
   }
 }
 
@@ -122,19 +191,48 @@ function drawCircles() {
 function renderIdeaList() {
   const ul = document.getElementById('ideas-ul');
   ul.innerHTML = '';
-  for (const idea of ideas) {
+  function renderIdeaNode(idea, level) {
     const li = document.createElement('li');
-    li.textContent = idea.id + '. ' + idea.text;
-    ul.appendChild(li);
+    li.style.marginLeft = (level * 28) + 'px';
+    li.innerHTML = `<strong>${idea.id}.</strong> ${idea.text}`;
+    // Critique form (nested for this idea)
+    const form = document.createElement('form');
+    form.style.marginTop = '6px';
+    form.innerHTML = `
+      <textarea rows="2" style="width:80%; resize: vertical" placeholder="Critique this idea..."></textarea>
+      <button type="submit">Critique</button>
+    `;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const val = form.querySelector('textarea').value.trim();
+      if (!val) return;
+      idea.children.push({id: ideaId++, text: val, children: []});
+      renderIdeaList();
+      drawCircles();
+    });
+    li.appendChild(form);
+    // Render children
+    if (idea.children && idea.children.length > 0) {
+      const childUl = document.createElement('ul');
+      childUl.style.paddingLeft = '0.7em';
+      idea.children.forEach(child => {
+        childUl.appendChild(renderIdeaNode(child, level+1));
+      });
+      li.appendChild(childUl);
+    }
+    return li;
+  }
+  for (const idea of ideas) {
+    ul.appendChild(renderIdeaNode(idea, 0));
   }
 }
 
-form.addEventListener('submit', function(e) {
+document.getElementById('root-idea-form').addEventListener('submit', function(e) {
   e.preventDefault();
-  const ideaText = textarea.value.trim();
+  const ideaText = document.getElementById('user-text').value.trim();
   if (!ideaText) return;
-  ideas.push({ id: ideas.length+1, text: ideaText });
-  textarea.value = '';
+  ideas.push({ id: ideaId++, text: ideaText, children: [] });
+  document.getElementById('user-text').value = '';
   drawCircles();
   renderIdeaList();
 });
