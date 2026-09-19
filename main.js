@@ -1,74 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Split Layout Example</title>
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: stretch;
-      justify-content: stretch;
-    }
-    .container {
-      display: flex;
-      width: 100vw;
-      height: 100vh;
-    }
-    .left, .right {
-      flex: 1;
-      padding: 2rem;
-      box-sizing: border-box;
-    }
-    .left {
-      background: #f0f0f0;
-      border-right: 2px solid #ddd;
-    }
-    .right {
-      background: #fff;
-    }
-    @media (max-width: 700px) {
-      .container {
-        flex-direction: column;
-      }
-      .left, .right {
-        border-right: none;
-        border-bottom: 2px solid #ddd;
-      }
-      .right {
-        border-bottom: none;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="left">
-      <h2>Left Side</h2>
-      <form id="root-idea-form">
-        <label for="user-text">Enter text:</label><br>
-        <textarea id="user-text" name="user-text" rows="6" style="width:100%;"></textarea><br>
-        <button type="submit" style="margin-top:8px;">Submit</button>
-      </form>
-      <div id="idea-list" style="margin-top:24px;"><h3>Ideas</h3><ul style="padding-left: 1.2em;" id="ideas-ul"></ul></div>
-    </div>
-    <div class="right">
-      <h2>Right Side</h2>
-      <div id="chartdiv" style="width: 100%; height: 500px;"></div>
-    </div>
-  </div>
-  <!-- amCharts 5 modules loaded from CDN (guaranteed order) -->
-  <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
-<script src="https://cdn.amcharts.com/lib/5/hierarchy.js"></script>
-<script>
-// --- begin amCharts and app logic ---
-
 am5.ready(function() {
   // --- Idea list, FORMS, and amCharts logic ---
   let ideas = [];
@@ -81,6 +10,7 @@ am5.ready(function() {
       const li = document.createElement('li');
       li.style.marginLeft = (level * 28) + 'px';
       li.innerHTML = `<strong>${idea.id}.</strong> ${idea.text}`;
+      // Critique form (nested for this idea)
       const form = document.createElement('form');
       form.style.marginTop = '6px';
       form.innerHTML = `
@@ -102,6 +32,7 @@ am5.ready(function() {
         renderIdeaList();
       });
       li.appendChild(form);
+      // Render children
       if (idea.children && idea.children.length > 0) {
         const childUl = document.createElement('ul');
         childUl.style.paddingLeft = '0.7em';
@@ -139,37 +70,96 @@ am5.ready(function() {
   // ---- amCharts 5 Collapsible Force-Directed Tree ----
   let amRoot;
   function renderAmChartsTree() {
+    // Dispose existing root/chart if any (for hot reload, re-renders, etc)
     if (amRoot) {
       amRoot.dispose();  
     }
+    /* Tea/Coffee wheel dataset (short version for demo; you can expand as desired) */
     const data = {
       name: "Flavor Wheel",
       children: [
-        { name: "Floral", children: [ { name: "Black Tea", value: 1 }, { name: "Chamomile", value: 1 } ] },
-        { name: "Fruity", children: [ { name: "Berry", value: 1 }, { name: "Dried Fruit", value: 1 }, { name: "Citrus Fruit", value: 1 }, { name: "Other Fruit", value: 1 } ] },
-        { name: "Sour/Fermented", children: [ { name: "Sour", value: 1 }, { name: "Alcohol", value: 1 }, { name: "Fermented", value: 1 } ] },
-        { name: "Green/Vegetative", children: [ { name: "Olive Oil", value: 1 }, { name: "Raw", value: 1 }, { name: "Peapod", value: 1 } ] },
-        { name: "Roasted", children: [ { name: "Pipe Tobacco", value: 1 }, { name: "Brown Spice", value: 1 } ] },
-        { name: "Spices", children: [ { name: "Pepper", value: 1 }, { name: "Pungent", value: 1 } ] },
-        { name: "Nutty/Cocoa", children: [ { name: "Nutty", value: 1 }, { name: "Cocoa", value: 1 } ] },
-        { name: "Sweet", children: [ { name: "Brown Sugar", value: 1 }, { name: "Vanilla", value: 1 } ] }
+        {
+          name: "Floral",
+          children: [
+            { name: "Black Tea", value: 1 },
+            { name: "Chamomile", value: 1 }
+          ]
+        },
+        {
+          name: "Fruity",
+          children: [
+            { name: "Berry", value: 1 },
+            { name: "Dried Fruit", value: 1 },
+            { name: "Citrus Fruit", value: 1 },
+            { name: "Other Fruit", value: 1 }
+          ]
+        },
+        {
+          name: "Sour/Fermented",
+          children: [
+            { name: "Sour", value: 1 },
+            { name: "Alcohol", value: 1 },
+            { name: "Fermented", value: 1 }
+          ]
+        },
+        {
+          name: "Green/Vegetative",
+          children: [
+            { name: "Olive Oil", value: 1 },
+            { name: "Raw", value: 1 },
+            { name: "Peapod", value: 1 }
+          ]
+        },
+        {
+          name: "Roasted",
+          children: [
+            { name: "Pipe Tobacco", value: 1 },
+            { name: "Brown Spice", value: 1 }
+          ]
+        },
+        {
+          name: "Spices",
+          children: [
+            { name: "Pepper", value: 1 },
+            { name: "Pungent", value: 1 }
+          ]
+        },
+        {
+          name: "Nutty/Cocoa",
+          children: [
+            { name: "Nutty", value: 1 },
+            { name: "Cocoa", value: 1 }
+          ]
+        },
+        {
+          name: "Sweet",
+          children: [
+            { name: "Brown Sugar", value: 1 },
+            { name: "Vanilla", value: 1 }
+          ]
+        }
       ]
     };
     amRoot = am5.Root.new("chartdiv");
     amRoot.setThemes([
       am5.Theme.new(amRoot)
     ]);
-    let series = amRoot.container.children.push(
+    let container = amRoot.container.children.push(am5.Container.new(amRoot, {
+      width: am5.p100,
+      height: am5.p100,
+      layout: am5.Layout.new(amRoot, {})
+    }));
+    let series = container.children.push(
       am5hierarchy.ForceDirected.new(amRoot, {
         singleBranchOnly: false,
-        downDepth: 1,
+        downDepth: 1, // show root + first level only, rest collapsed
         initialDepth: 1,
         valueField: "value",
         categoryField: "name",
         childDataField: "children",
         minRadius: 22,
         maxRadius: 45,
-        manyBodyStrength: -15,
+        manyBodyStrength: -15,  // moderate repulsion
         nodePadding: 12,
         centerStrength: 0.7,
         linkWithStrength: 0.85,
@@ -177,27 +167,26 @@ am5.ready(function() {
       })
     );
     series.data.setAll([data]);
+    // Colors: gradient across depth
     series.nodes.template.adapters.add("fill", function(fill, target) {
       let depth = target.dataItem.get("depth");
       const palette = [0x5677fc, 0x34c759, 0xff9500, 0xff2d55, 0x6f42c1, 0xffc107, 0x20bfa9, 0xff4081];
       let hex = palette[depth % palette.length] || 0xcccccc;
       return amRoot.interfaceColors.get("alternative").lighten(am5.color(hex), 0.5);
     });
+    // Collapsible behavior
     series.nodes.template.setAll({
-      toggleKey: "active",
+      toggleKey: "active",  // click to expand/collapse
       cursorOverStyle: "pointer",
       tooltipText: "{category}"
     });
+    // Labels
     series.labels.template.setAll({
       fontSize: 14,
       text: "{category}"
     });
-    series.appear(1000, 100);
+    // Animate initial appearance
+    series.appear(1000, 100);  // fade/animation
   }
   renderAmChartsTree();
 });
-// --- end amCharts and app logic ---
-</script>
-
-</body>
-</html>
