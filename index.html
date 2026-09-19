@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Split Layout Example</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+    }
+    .container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+    .left, .right {
+      flex: 1;
+      padding: 2rem;
+      box-sizing: border-box;
+    }
+    .left {
+      background: #f0f0f0;
+      border-right: 2px solid #ddd;
+    }
+    .right {
+      background: #fff;
+    }
+    @media (max-width: 700px) {
+      .container {
+        flex-direction: column;
+      }
+      .left, .right {
+        border-right: none;
+        border-bottom: 2px solid #ddd;
+      }
+      .right {
+        border-bottom: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="left">
+      <h2>Left Side</h2>
+      <p>This is the left side of the page.</p>
+    </div>
+    <div class="right">
+      <h2>Right Side</h2>
+      <p>This is the right side of the page.</p>
+    </div>
+  </div>
+</body>
+</html>
