@@ -202,9 +202,16 @@ function renderIdeaList() {
       <textarea rows="2" style="width:80%; resize: vertical" placeholder="Critique this idea..."></textarea>
       <button type="submit">Critique</button>
     `;
+    const textarea = form.querySelector('textarea');
+    textarea.addEventListener('keydown', function(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
     form.addEventListener('submit', function(e) {
       e.preventDefault();
-      const val = form.querySelector('textarea').value.trim();
+      const val = textarea.value.trim();
       if (!val) return;
       idea.children.push({id: ideaId++, text: val, children: []});
       renderIdeaList();
@@ -227,12 +234,20 @@ function renderIdeaList() {
   }
 }
 
-document.getElementById('root-idea-form').addEventListener('submit', function(e) {
+const rootForm = document.getElementById('root-idea-form');
+const rootTextarea = document.getElementById('user-text');
+rootTextarea.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    rootForm.requestSubmit();
+  }
+});
+rootForm.addEventListener('submit', function(e) {
   e.preventDefault();
-  const ideaText = document.getElementById('user-text').value.trim();
+  const ideaText = rootTextarea.value.trim();
   if (!ideaText) return;
   ideas.push({ id: ideaId++, text: ideaText, children: [] });
-  document.getElementById('user-text').value = '';
+  rootTextarea.value = '';
   drawCircles();
   renderIdeaList();
 });
