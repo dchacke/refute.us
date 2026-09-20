@@ -215,10 +215,13 @@
   }
 
   .forest .node.is-root text { font-size: 11.5px; font-weight: 600; }
-  .forest .node text tspan.num {
-    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
-  }
   .forest .node:not(.is-adoptable) text { fill: var(--label-dim); }
+
+  /* A short preview of a criticism's own text, sitting just under its node. */
+  .forest .node text.preview {
+    text-anchor: middle;
+    font-size: 9px;
+  }
 
   /* Shown only until the first idea exists, since that's otherwise the only
      way to discover that the canvas itself is where you add one. */
@@ -813,17 +816,18 @@
 
         function radius(d) { return 10; }
 
-        // Renders a node's label as separate tspans so only the leading number
-        // (e.g. "1.2") gets the monospace treatment, not the idea text next to it.
+        // Root ideas keep a short title above the node; criticisms show only
+        // their text preview below (see nodeSel.select("text.preview")) --
+        // their number (e.g. "1.2") is still used for addressing them in
+        // tooltips, modals and the history, just not drawn on the canvas.
         function renderLabel(sel) {
           sel.each(function (d) {
             var el = d3.select(this);
             el.selectAll("tspan").remove();
-            el.append("tspan").attr("class", "num").text(d.label);
             if (d.depth === 0) {
               var flat = d.text.replace(/\s+/g, " ");
               var body = flat.length > 16 ? flat.slice(0, 16) + "…" : flat;
-              el.append("tspan").text("  " + body);
+              el.append("tspan").text(body);
             }
           });
         }
@@ -1048,7 +1052,9 @@
               .nodeSize([X_GAP, Y_GAP])
               .separation(function (a, b) {
                 if (a.depth === 1) return 2.2;              // room between separate trees
-                return a.parent === b.parent ? 1 : 1.5;
+                // A slight bit of extra room between siblings specifically
+                // (+10px), on top of the usual node spacing.
+                return a.parent === b.parent ? 1 + 10 / X_GAP : 1.5;
               })(h);
 
             var minX = Infinity, maxX = -Infinity, maxDepth = 0;
@@ -1060,9 +1066,15 @@
               if (n.depth - 1 > maxDepth) maxDepth = n.depth - 1;
             });
             var cx = (minX + maxX) / 2;
+            // Every other criticism on a row is nudged down a little, so its
+            // text preview lands in the gap between its neighbours' previews
+            // instead of colliding with them -- without needing any extra
+            // horizontal room.
+            var ALT_Y = 16;
             nodes.forEach(function (node) {
+              var altY = (node.depth > 0 && node.rank % 2 === 1) ? ALT_Y : 0;
               node.tx = width / 2 + node.lx - cx;
-              node.ty = TOP + node.depth * Y_GAP;
+              node.ty = TOP + node.depth * Y_GAP + altY;
             });
             nodes.forEach(function (node) {
               if (node.orderChanged && node.fx == null) assistedMove(node);
@@ -1070,7 +1082,7 @@
             bounds = {
               minX: width / 2 + minX - cx,
               maxX: width / 2 + maxX - cx,
-              maxY: TOP + maxDepth * Y_GAP
+              maxY: TOP + maxDepth * Y_GAP + ALT_Y
             };
 
             // New nodes start beside their parent so the tree visibly grows out of it.
@@ -1108,6 +1120,7 @@
               g.append("circle").attr("class", "ring");
               g.append("circle").attr("class", "core");
               g.append("text");
+              g.append("text").attr("class", "preview");
               g.call(drag)
                 .on("pointerenter", function (e, d) {
                   this.classList.add("is-highlighted");
@@ -1154,13 +1167,23 @@
             });
           nodeSel.select("circle.core").attr("r", radius);
           nodeSel.select("circle.ring").attr("r", function (d) { return radius(d) + 4; });
-          // Top-level ideas are labelled above the node, everything else beside it.
+          // Only root ideas carry a label on the canvas now, centered above the node.
           nodeSel.select("text")
-            .attr("text-anchor", function (d) { return d.depth === 0 ? "middle" : "start"; })
-            .attr("x", function (d) { return d.depth === 0 ? 0 : radius(d) + 8; })
-            .attr("y", function (d) { return d.depth === 0 ? -(radius(d) + 11) : 0; })
-            .attr("dy", function (d) { return d.depth === 0 ? "0" : "0.32em"; })
+            .attr("text-anchor", "middle")
+            .attr("x", 0)
+            .attr("y", function (d) { return -(radius(d) + 11); })
+            .attr("dy", "0")
             .call(renderLabel);
+          // A short preview of each criticism's own text, underneath its node.
+          nodeSel.select("text.preview")
+            .attr("x", 0)
+            .attr("y", function (d) { return radius(d) + 7.5; })
+            .attr("dy", "0.8em")
+            .text(function (d) {
+              if (d.depth === 0) return "";
+              var flat = d.text.replace(/\s+/g, " ");
+              return flat.length > 16 ? flat.slice(0, 16) + "…" : flat;
+            });
 
           // The very first idea (or the first one after a reset) should always
           // land nicely in view -- any pan/zoom that happened while the canvas
