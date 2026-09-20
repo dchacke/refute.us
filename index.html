@@ -421,8 +421,8 @@
   }
 
   .timeline-slider::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: var(--button-bg);
     border: 3px solid var(--left);
@@ -1251,7 +1251,11 @@
           var tick = document.createElement("button");
           tick.type = "button";
           tick.className = "timeline-tick" + (i === cursor ? " is-active" : "");
-          tick.style.left = (n <= 1 ? 0 : (i / (n - 1)) * 100) + "%";
+          // The slider's thumb is inset by half its width (20px) from each
+          // edge of the track, so a tick's position has to match that same
+          // inset rather than spanning the full 0-100% width.
+          var frac = n <= 1 ? 0 : i / (n - 1);
+          tick.style.left = "calc(" + frac + " * (100% - 20px) + 10px)";
           tick.title = entry.summary + " — " + formatTime(entry.time);
           tick.setAttribute("aria-label", entry.summary + ", " + formatTime(entry.time));
           tick.addEventListener("click", function () {
