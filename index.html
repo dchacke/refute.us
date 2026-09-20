@@ -1009,7 +1009,7 @@
             d.fx = null; d.fy = null;
             svg.classed("is-dragging", false);
             if (reorderSiblingsByPosition(d)) {
-              commit("reorder", "Reordered ideas");
+              commit("reorder", {});
             }
           });
 
@@ -1273,7 +1273,14 @@
               return {
                 snapshot: Array.isArray(e.snapshot) ? e.snapshot.map(normalize).filter(Boolean) : [],
                 type: typeof e.type === "string" ? e.type : "add",
-                summary: typeof e.summary === "string" ? e.summary : "Event",
+                // Newer entries carry `detail` -- a few plain keywords/values
+                // the display text is generated from at render time (see
+                // summaryFor), so wording can change later without a
+                // migration. Older entries only have a frozen `summary`
+                // string from before that existed; summaryFor() falls back
+                // to it when `detail` is missing.
+                detail: (e.detail && typeof e.detail === "object") ? e.detail : null,
+                summary: typeof e.summary === "string" ? e.summary : null,
                 time: typeof e.time === "number" ? e.time : Date.now()
               };
             });
@@ -1295,7 +1302,7 @@
         }
 
         roots = seed;
-        history = [{ snapshot: cloneTree(seed), type: "start", summary: "Start", time: Date.now() }];
+        history = [{ snapshot: cloneTree(seed), type: "start", detail: {}, time: Date.now() }];
         cursor = 0;
       }
 
@@ -1310,13 +1317,40 @@
       // Records the current tree as a new point in history. If the timeline was
       // rewound before this edit, everything after that point is dropped first --
       // editing from the past starts a new branch from there, discarding the old
-      // future.
-      function recordEvent(type, summary) {
+      // future. `detail` is a small plain object of keywords/values (an
+      // idea's text, a count, ...) that summaryFor() turns into display text
+      // at render time -- see summaryFor for why.
+      function recordEvent(type, detail) {
         if (cursor < history.length - 1) history.length = cursor + 1;
-        history.push({ snapshot: cloneTree(roots), type: type, summary: summary, time: Date.now() });
+        history.push({ snapshot: cloneTree(roots), type: type, detail: detail || {}, time: Date.now() });
         cursor = history.length - 1;
         saveHistory();
         updateTimelineUI();
+      }
+
+      // Generates an entry's display text from its type and detail, rather
+      // than freezing it as a string at the moment the entry is created --
+      // so wording can be improved later and it applies retroactively to
+      // every entry, old and new, without a migration. Entries saved before
+      // this existed only have a frozen `summary`; those still show their
+      // original wording.
+      function summaryFor(entry) {
+        var d = entry.detail || {};
+        switch (entry.type) {
+          case "start":
+            return "Start";
+          case "add-idea":
+            return "Added idea “" + preview(d.text || "", 24) + "”";
+          case "add-criticism":
+            return "Submitted criticism “" + preview(d.text || "", 24) + "”";
+          case "delete":
+            return "Deleted “" + preview(d.text || "", 24) + "”" +
+              (d.count > 0 ? " (+" + d.count + (d.count === 1 ? " criticism)" : " criticisms)") : "");
+          case "reorder":
+            return "Reordered ideas";
+          default:
+            return entry.summary || "Event";
+        }
       }
 
       /* ---------- rational adoptability ---------- */
@@ -1376,9 +1410,9 @@
 
       // Called after every change: refresh the chart, then record this as a new
       // point in the timeline (which also persists it).
-      function commit(type, summary) {
+      function commit(type, detail) {
         refresh();
-        recordEvent(type, summary);
+        recordEvent(type, detail);
       }
 
       // Jumps the whole page to how it looked at a given point in the timeline.
@@ -1428,9 +1462,9 @@
         timelineSlider.value = String(cursor);
         timelineSlider.disabled = n <= 1;
         timelineHint.hidden = n <= 1;
-        timelineSlider.setAttribute("aria-valuetext", history[cursor].summary);
+        timelineSlider.setAttribute("aria-valuetext", summaryFor(history[cursor]));
         timelineCount.textContent = (cursor + 1) + " / " + n;
-        timelineLabel.textContent = history[cursor].summary;
+        timelineLabel.textContent = summaryFor(history[cursor]);
 
         timelineTicks.innerHTML = "";
         history.forEach(function (entry, i) {
@@ -1442,8 +1476,9 @@
           // inset rather than spanning the full 0-100% width.
           var frac = n <= 1 ? 0 : i / (n - 1);
           tick.style.left = "calc(" + frac + " * (100% - 20px) + 10px)";
-          tick.title = entry.summary + " — " + formatTime(entry.time);
-          tick.setAttribute("aria-label", entry.summary + ", " + formatTime(entry.time));
+          var text = summaryFor(entry);
+          tick.title = text + " — " + formatTime(entry.time);
+          tick.setAttribute("aria-label", text + ", " + formatTime(entry.time));
           tick.addEventListener("click", function () {
             if (i !== cursor) restoreTo(i);
           });
@@ -1636,7 +1671,7 @@
             var maxNum = roots.reduce(function (m, r) { return typeof r.num === "number" && r.num > m ? r.num : m; }, 0);
             var idea = { id: uid(), text: text, children: [], num: maxNum + 1 };
             roots.push(idea);
-            commit("add", "Added idea " + String(idea.num));
+            commit("add-idea", { text: idea.text });
           }
         });
       };
@@ -1653,8 +1688,7 @@
             var maxNum = target.children.reduce(function (m, c) { return typeof c.num === "number" && c.num > m ? c.num : m; }, 0);
             var child = { id: uid(), text: text, children: [], num: maxNum + 1 };
             target.children.push(child);
-            var childLabel = d.label + "." + child.num;
-            commit("add", "Criticized idea " + d.label + " (added " + childLabel + ")");
+            commit("add-criticism", { text: child.text });
           }
         });
       };
@@ -1673,9 +1707,7 @@
           danger: true,
           onSubmit: function () {
             removeIdea(d.id);
-            var summary = "Deleted idea " + d.label +
-              (n > 0 ? " (+" + n + (n === 1 ? " criticism)" : " criticisms)") : "");
-            commit("delete", summary);
+            commit("delete", { text: d.text, count: n });
           }
         });
       };
@@ -1703,7 +1735,7 @@
           danger: true,
           onSubmit: function () {
             roots = [];
-            history = [{ snapshot: [], type: "start", summary: "Start", time: Date.now() }];
+            history = [{ snapshot: [], type: "start", detail: {}, time: Date.now() }];
             cursor = 0;
             try {
               localStorage.removeItem(HISTORY_KEY);
