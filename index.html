@@ -1450,11 +1450,11 @@
         var target = findIdea(d.id);
         if (!target) return;
         var n = countDescendants(target);
-        var message = "Delete idea " + d.label +
+        var message = "Are you sure you want to delete idea " + d.label +
           (n > 0 ? " and its " + n + (n === 1 ? " criticism" : " criticisms") : "") + "?";
         openModal({
           mode: "confirm",
-          title: "Delete idea " + d.label,
+          title: "Confirm delete",
           message: message,
           buttonText: "Delete",
           danger: true,
