@@ -117,9 +117,13 @@
   .forest .node { cursor: grab; }
   .forest .node:focus { outline: none; }
 
-  /* Adoptable nodes are solid with an outer ring; the rest are hollow. Colour still says
-     which level a node is on (gold = top-level idea, blue = criticism). */
+  /* The ring is only ever shown as a transient long-press cue (below); the
+     adoptable/not-adoptable distinction is carried by the core circle alone
+     now -- solid means rationally adoptable, hollow means it isn't. Colour
+     still says which level a node is on (gold = top-level idea, blue =
+     criticism). */
   .forest .node circle.ring {
+    display: none;
     fill: none;
     stroke: var(--node-crit);
     stroke-width: 1.5px;
@@ -127,7 +131,6 @@
   }
 
   .forest .node.is-root circle.ring { stroke: var(--node-root); }
-  .forest .node:not(.is-adoptable) circle.ring { display: none; }
 
   .forest .node circle.core {
     fill: var(--node-crit);
@@ -152,7 +155,7 @@
 
   /* A slow, subtle glow/pulse marks rationally adoptable nodes as "live". */
   @media (prefers-reduced-motion: no-preference) {
-    .forest .node.is-adoptable circle.ring {
+    .forest .node.is-adoptable circle.core {
       animation: adopt-glow 2.6s ease-in-out infinite;
     }
   }
