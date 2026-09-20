@@ -202,6 +202,9 @@
   }
 
   .forest .node.is-root text { font-size: 11.5px; font-weight: 600; }
+  .forest .node text tspan.num {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  }
   .forest .node:not(.is-adoptable) text { fill: var(--label-dim); }
 
   /* Shown only until the first idea exists, since that's otherwise the only
@@ -260,6 +263,7 @@
   .tip-id {
     margin-right: 0.5rem;
     color: var(--tip-muted);
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
     font-variant-numeric: tabular-nums;
   }
 
@@ -749,10 +753,19 @@
 
         function radius(d) { return 10; }
 
-        function labelFor(d) {
-          if (d.depth > 0) return d.label;
-          var flat = d.text.replace(/\s+/g, " ");
-          return d.label + "  " + (flat.length > 16 ? flat.slice(0, 16) + "…" : flat);
+        // Renders a node's label as separate tspans so only the leading number
+        // (e.g. "1.2") gets the monospace treatment, not the idea text next to it.
+        function renderLabel(sel) {
+          sel.each(function (d) {
+            var el = d3.select(this);
+            el.selectAll("tspan").remove();
+            el.append("tspan").attr("class", "num").text(d.label);
+            if (d.depth === 0) {
+              var flat = d.text.replace(/\s+/g, " ");
+              var body = flat.length > 16 ? flat.slice(0, 16) + "…" : flat;
+              el.append("tspan").text("  " + body);
+            }
+          });
         }
 
         function draw() {
@@ -982,7 +995,7 @@
             .attr("x", function (d) { return d.depth === 0 ? 0 : radius(d) + 8; })
             .attr("y", function (d) { return d.depth === 0 ? -(radius(d) + 11) : 0; })
             .attr("dy", function (d) { return d.depth === 0 ? "0" : "0.32em"; })
-            .text(labelFor);
+            .call(renderLabel);
 
           // The very first idea (or the first one after a reset) should always
           // land nicely in view -- any pan/zoom that happened while the canvas
