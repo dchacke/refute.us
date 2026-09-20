@@ -1499,7 +1499,7 @@
       interactions.onBackgroundTap = function () {
         openModal({
           title: "New idea",
-          placeholder: "What's the idea?",
+          placeholder: "What’s the idea?",
           buttonText: "Add",
           onSubmit: function (text) {
             var maxNum = roots.reduce(function (m, r) { return typeof r.num === "number" && r.num > m ? r.num : m; }, 0);
@@ -1555,7 +1555,7 @@
         openModal({
           mode: "confirm",
           title: "Reset everything",
-          message: "Delete all ideas and clear the history? This can't be undone.",
+          message: "Delete all ideas and clear the history? This can’t be undone.",
           buttonText: "Reset",
           danger: true,
           onSubmit: function () {
