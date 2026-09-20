@@ -357,6 +357,7 @@
   }
 
   .timeline-info {
+    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: baseline;
@@ -386,6 +387,28 @@
     display: flex;
     align-items: center;
   }
+
+  /* Sits centered on the same line as the state description and count
+     (not over the slider itself); only shown where there's clearly enough
+     horizontal room, hidden by default (mobile-first) and on narrow windows. */
+  .timeline-hint {
+    display: none;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--muted);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  @media (min-width: 640px) {
+    .timeline-hint { display: block; }
+  }
+
+  .timeline-hint[hidden] { display: none; }
 
   .timeline-slider {
     -webkit-appearance: none;
@@ -616,6 +639,7 @@
     <footer class="timeline" id="timeline" aria-label="Idea history">
       <div class="timeline-info">
         <span class="timeline-label" id="timeline-label">Start</span>
+        <span class="timeline-hint" id="timeline-hint" aria-hidden="true">Click or drag to restore a previous state.</span>
         <span class="timeline-count" id="timeline-count">1 / 1</span>
       </div>
       <div class="timeline-track-wrap">
@@ -1236,6 +1260,7 @@
       var timelineCount = document.getElementById("timeline-count");
       var timelineSlider = document.getElementById("timeline-slider");
       var timelineTicks = document.getElementById("timeline-ticks");
+      var timelineHint = document.getElementById("timeline-hint");
 
       function formatTime(t) {
         try {
@@ -1250,6 +1275,7 @@
         timelineSlider.max = String(Math.max(0, n - 1));
         timelineSlider.value = String(cursor);
         timelineSlider.disabled = n <= 1;
+        timelineHint.hidden = n <= 1;
         timelineSlider.setAttribute("aria-valuetext", history[cursor].summary);
         timelineCount.textContent = (cursor + 1) + " / " + n;
         timelineLabel.textContent = history[cursor].summary;
