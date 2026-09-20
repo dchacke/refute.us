@@ -115,38 +115,32 @@
   }
 
   /* An edge pointing at a rationally adoptable criticism picks up that node's
-     color and glow. It stays a solid line -- the "flowing toward the parent"
-     cue is a separate, brighter dash riding on top of it (below), rather
-     than gaps in the edge itself. */
+     color. It stays a plain solid line -- the glow and the "flowing toward
+     the parent" cue both live on the brighter dash riding on top of it
+     (below), rather than on the edge itself. */
   .forest .link.is-adoptable {
     stroke: var(--node-crit);
     opacity: 0.85;
   }
 
-  @media (prefers-reduced-motion: no-preference) {
-    .forest .link.is-adoptable {
-      animation: adopt-glow 2.6s ease-in-out infinite;
-    }
-  }
-
   .forest .link-flow {
     fill: none;
-    stroke: var(--label);
-    stroke-width: 2px;
-    stroke-dasharray: 2 14;
+    stroke: color-mix(in srgb, var(--node-crit) 65%, black);
+    stroke-width: 3px;
+    stroke-linecap: round;
+    stroke-dasharray: 4 14;
     opacity: 0.9;
-    mix-blend-mode: screen;
     pointer-events: none;
   }
 
   @media (prefers-reduced-motion: no-preference) {
     .forest .link-flow {
-      animation: flow-to-parent 1.1s linear infinite;
+      animation: flow-to-parent 1.1s linear infinite, adopt-glow 2.6s ease-in-out infinite;
     }
   }
 
   @keyframes flow-to-parent {
-    to { stroke-dashoffset: 16; }
+    to { stroke-dashoffset: 18; }
   }
 
   .forest .node { cursor: grab; }
@@ -893,7 +887,10 @@
         function showTip(d) {
           tipId.textContent = d.label;
           tipText.textContent = d.text;
-          tipStatus.textContent = d.adoptable ? "Rationally adoptable" : "Not rationally adoptable";
+          var detail = d.adoptable
+            ? "(no pending criticisms)"
+            : "(" + d.pendingCount + " pending " + (d.pendingCount === 1 ? "criticism" : "criticisms") + ")";
+          tipStatus.textContent = (d.adoptable ? "Rationally adoptable " : "Not rationally adoptable ") + detail;
           tip.hidden = false;
         }
         function hideTip() { tip.hidden = true; }
@@ -915,6 +912,9 @@
             node.parentId = parentId;
             node.label = label; // the number shown in the label, e.g. "1.2"
             node.adoptable = !!lastStatus[id];
+            // A "pending" criticism is a direct child that's currently
+            // rationally adoptable itself -- that's what's blocking this idea.
+            node.pendingCount = idea.children.filter(function (c) { return !!lastStatus[c.id]; }).length;
             next[id] = node;
             nodes.push(node);
             if (parentId) links.push({ source: parentId, target: id });
