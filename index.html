@@ -117,6 +117,12 @@
   .forest .node { cursor: grab; }
   .forest .node:focus { outline: none; }
 
+  /* While a node is being dragged, show a "grabbing" cursor everywhere
+     over the canvas, not just over the node itself (the pointer can
+     outrun the node during a fast drag). */
+  .forest.is-dragging,
+  .forest.is-dragging .node { cursor: grabbing; }
+
   /* The ring is only ever shown as a transient long-press cue (below); the
      adoptable/not-adoptable distinction is carried by the core circle alone
      now -- solid means rationally adoptable, hollow means it isn't. Colour
@@ -833,9 +839,17 @@
         var zoom = d3.zoom()
           .scaleExtent([0.3, 4])
           .extent(function () { return [[0, 0], [width, height]]; })
+          .on("start", function (e) {
+            // Only show the "grabbing" cursor for an actual pointer-driven
+            // pan, not for a wheel/pinch zoom or a programmatic fit().
+            if (e.sourceEvent && e.sourceEvent.type !== "wheel") svg.classed("is-dragging", true);
+          })
           .on("zoom", function (e) {
             viewport.attr("transform", e.transform);
             if (e.sourceEvent) userMoved = true;
+          })
+          .on("end", function () {
+            svg.classed("is-dragging", false);
           });
         svg.call(zoom).on("dblclick.zoom", null); // avoid an accidental zoom on a quick double-tap
 
@@ -881,12 +895,14 @@
           .on("start", function (e, d) {
             if (!e.active) sim.alphaTarget(0.3).restart();
             d.fx = d.x; d.fy = d.y;
+            svg.classed("is-dragging", true);
           })
           .on("drag", function (e, d) { d.fx = e.x; d.fy = e.y; })
           .on("end", function (e, d) {
             // Let go and the node springs back to its place in the hierarchy.
             if (!e.active) sim.alphaTarget(0);
             d.fx = null; d.fy = null;
+            svg.classed("is-dragging", false);
             if (reorderSiblingsByPosition(d)) {
               commit("reorder", "Reordered ideas");
             }
