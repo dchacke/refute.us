@@ -292,13 +292,6 @@
     pointer-events: none;
   }
 
-  .tip-id {
-    margin-right: 0.5rem;
-    color: var(--tip-muted);
-    font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
-    font-variant-numeric: tabular-nums;
-  }
-
   .tip-status {
     margin-top: 0.25rem;
     color: var(--tip-muted);
@@ -661,7 +654,7 @@
         <button type="button" class="fit-btn reset-btn" id="reset-btn">Reset</button>
         <button type="button" class="fit-btn info-btn" id="info-btn" aria-label="About this app">i</button>
         <div class="tip" id="tip" hidden>
-          <span class="tip-id" id="tip-id"></span><span class="tip-text" id="tip-text"></span>
+          <span class="tip-text" id="tip-text"></span>
           <div class="tip-status" id="tip-status"></div>
         </div>
         <ul class="legend" aria-label="Legend">
@@ -822,7 +815,6 @@
 
         var pane = document.getElementById("forest-pane");
         var tip = document.getElementById("tip");
-        var tipId = document.getElementById("tip-id");
         var tipText = document.getElementById("tip-text");
         var tipStatus = document.getElementById("tip-status");
         var reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -1025,7 +1017,6 @@
           tip.style.top = y + "px";
         }
         function showTip(d) {
-          tipId.textContent = d.label;
           tipText.textContent = d.text;
           var detail = d.adoptable
             ? "(no pending criticisms)"
