@@ -150,6 +150,18 @@
     stroke-width: 2.5px;
   }
 
+  /* A slow, subtle glow/pulse marks rationally adoptable nodes as "live". */
+  @media (prefers-reduced-motion: no-preference) {
+    .forest .node.is-adoptable circle.ring {
+      animation: adopt-glow 2.6s ease-in-out infinite;
+    }
+  }
+
+  @keyframes adopt-glow {
+    0%, 100% { filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)); }
+    50% { filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7)); }
+  }
+
   /* Fades in while a node is held down, as a cue that a long-press is arming. */
   .forest .node.is-pressing circle.ring {
     display: block;
