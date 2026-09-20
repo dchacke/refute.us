@@ -69,6 +69,13 @@
 
   /* ---------- forest chart ---------- */
   .forest {
+    /* Without this, a long-press on iOS Safari (used here to open the
+       delete confirmation) is also read as a text-selection gesture --
+       preventDefault() on pointerdown isn't enough to stop it -- and the
+       selection/callout UI can still be showing once the modal opens. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
     position: absolute;
     inset: 0;
     display: block;
