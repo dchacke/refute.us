@@ -709,6 +709,13 @@
         return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
       }
 
+      // A short preview of an idea's own text, for referring to it in modals
+      // instead of its number (e.g. "1.2"), which is no longer shown to users.
+      function preview(text, max) {
+        var flat = text.replace(/\s+/g, " ").trim();
+        return flat.length > max ? flat.slice(0, max) + "…" : flat;
+      }
+
       function findIdea(id, list) {
         list = list || roots;
         for (var i = 0; i < list.length; i++) {
@@ -1638,7 +1645,7 @@
         var target = findIdea(d.id);
         if (!target) return;
         openModal({
-          title: "Criticize idea " + d.label,
+          title: "Submit a criticism",
           quote: target.text,
           placeholder: "Criticize this idea",
           buttonText: "Criticize",
@@ -1656,7 +1663,7 @@
         var target = findIdea(d.id);
         if (!target) return;
         var n = countDescendants(target);
-        var message = "Are you sure you want to delete idea " + d.label +
+        var message = "Are you sure you want to delete “" + preview(d.text, 32) + "”" +
           (n > 0 ? " and its " + n + (n === 1 ? " criticism" : " criticisms") : "") + "?";
         openModal({
           mode: "confirm",
