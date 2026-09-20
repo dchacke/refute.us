@@ -251,13 +251,14 @@
     border: 1px solid var(--link);
     border-radius: 999px;
     cursor: pointer;
+    transition: background-color 150ms ease, transform 100ms ease;
   }
 
   .fit-btn:hover { background: rgba(255, 255, 255, 0.16); }
   .fit-btn:active { transform: translateY(1px); }
 
   .reset-btn { right: auto; left: 0.75rem; width: auto; }
-  .fit-btn:focus-visible { outline: 3px solid var(--label); outline-offset: 2px; }
+  .fit-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
   .tip {
     position: absolute;
@@ -456,6 +457,7 @@
     border: 2px solid var(--field-border);
     pointer-events: auto;
     cursor: pointer;
+    transition: border-color 150ms ease;
   }
 
   .timeline-tick.is-active {
@@ -480,7 +482,11 @@
     justify-content: center;
     padding: 1.5rem;
     background: rgba(10, 12, 18, 0.55);
+    opacity: 0;
+    transition: opacity 180ms ease;
   }
+
+  .modal-backdrop.is-open { opacity: 1; }
 
   .modal-backdrop[hidden] { display: none; }
 
@@ -492,6 +498,14 @@
     color: var(--ink);
     border-radius: 12px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    transform: scale(0.96) translateY(6px);
+    transition: transform 180ms ease;
+  }
+
+  .modal-backdrop.is-open .modal { transform: scale(1) translateY(0); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-backdrop, .modal { transition: none; }
   }
 
   .modal-title {
@@ -553,6 +567,7 @@
     font-weight: 600;
     border-radius: 6px;
     cursor: pointer;
+    transition: background-color 150ms ease, border-color 150ms ease, transform 100ms ease;
   }
 
   .modal-btn--ghost {
@@ -561,17 +576,23 @@
     border: 1px solid var(--field-border);
   }
 
+  .modal-btn--ghost:hover { background: rgba(255, 255, 255, 0.08); }
+
   .modal-btn--primary {
     color: var(--button-fg);
     background: var(--button-bg);
     border: 0;
   }
 
+  .modal-btn--primary:hover { background: color-mix(in srgb, var(--button-bg) 85%, white); }
+
   .modal-btn--danger {
     color: #ffffff;
     background: #b3261e;
     border: 0;
   }
+
+  .modal-btn--danger:hover { background: color-mix(in srgb, #b3261e 85%, white); }
 
   .modal-btn:active { transform: translateY(1px); }
 
@@ -1314,6 +1335,8 @@
       var modalOnSubmit = null;
       var modalOpener = null;
       var modalIgnoreClicksUntil = 0;
+      var modalOpen = false;
+      var modalCloseTimer = null;
 
       // opts: title, buttonText, onSubmit, and either
       //   { placeholder, quote }               -- a text-entry modal, optionally
@@ -1347,7 +1370,13 @@
           modalTextarea.setAttribute("aria-label", opts.title);
         }
 
+        if (modalCloseTimer) { clearTimeout(modalCloseTimer); modalCloseTimer = null; }
         modalBackdrop.hidden = false;
+        modalOpen = true;
+        // Add the open class on the next frame so the backdrop/modal
+        // transition (opacity + a slight scale-up) actually plays, instead
+        // of starting already in its end state.
+        requestAnimationFrame(function () { modalBackdrop.classList.add("is-open"); });
         // addPress() already suppresses the touch "ghost click" that this guard
         // was originally written for (see its pointerdown handler); this is
         // just a small safety margin in case some other path opens the modal.
@@ -1358,8 +1387,17 @@
       }
 
       function closeModal() {
-        if (modalBackdrop.hidden) return;
-        modalBackdrop.hidden = true;
+        if (!modalOpen) return;
+        modalOpen = false;
+        modalBackdrop.classList.remove("is-open");
+        // Wait for the fade-out to finish before actually hiding (and
+        // removing from the layout/a11y tree) -- with a fallback timer in
+        // case transitionend doesn't fire, e.g. under reduced motion.
+        if (modalCloseTimer) clearTimeout(modalCloseTimer);
+        modalCloseTimer = setTimeout(function () {
+          modalBackdrop.hidden = true;
+          modalCloseTimer = null;
+        }, 200);
         modalOnSubmit = null;
         var opener = modalOpener;
         modalOpener = null;
@@ -1399,7 +1437,7 @@
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitModal(); }
       });
       document.addEventListener("keydown", function (e) {
-        if (e.key !== "Escape" || modalBackdrop.hidden) return;
+        if (e.key !== "Escape" || !modalOpen) return;
         e.stopPropagation();
         closeModal();
       });
