@@ -1023,12 +1023,17 @@
           tip.style.left = x + "px";
           tip.style.top = y + "px";
         }
-        function showTip(d) {
-          tipText.textContent = d.text;
+        // Shared by the tooltip and each node's aria-label, so a screen
+        // reader hears the same status a sighted user sees on hover.
+        function statusText(d) {
           var detail = d.adoptable
             ? "(no pending criticisms)"
             : "(" + d.pendingCount + " pending " + (d.pendingCount === 1 ? "criticism" : "criticisms") + ")";
-          tipStatus.textContent = (d.adoptable ? "Rationally adoptable " : "Not rationally adoptable ") + detail;
+          return (d.adoptable ? "Rationally adoptable " : "Not rationally adoptable ") + detail;
+        }
+        function showTip(d) {
+          tipText.textContent = d.text;
+          tipStatus.textContent = statusText(d);
           tip.hidden = false;
         }
         function hideTip() { tip.hidden = true; }
@@ -1042,14 +1047,13 @@
 
           function jitter(spread) { return (Math.random() - 0.5) * spread; }
 
-          function walk(idea, depth, parentId, label, rank) {
+          function walk(idea, depth, parentId, rank) {
             var id = idea.id;
             var node = byId[id] || { id: id, fresh: true };
             var prevRank = node.rank;
             node.text = idea.text;
             node.depth = depth;
             node.parentId = parentId;
-            node.label = label; // the number shown in the label, e.g. "1.2"
             node.adoptable = !!lastStatus[id];
             node.rank = rank; // this idea's current position among its siblings
             // True when this node existed before and has changed which of its
@@ -1063,20 +1067,20 @@
             next[id] = node;
             nodes.push(node);
             if (parentId) links.push({ source: parentId, target: id });
-            // Same deal as the top-level numbering below: a criticism's number
-            // is assigned once and kept for good, so reordering siblings
-            // doesn't renumber them.
+            // A criticism's number is assigned once and kept for good (it's
+            // only ever used internally, e.g. for maxNum below), so
+            // reordering siblings doesn't reassign them.
             idea.children.forEach(function (c, i) {
               if (typeof c.num !== "number") c.num = i + 1;
-              walk(c, depth + 1, id, label + "." + c.num, i);
+              walk(c, depth + 1, id, i);
             });
           }
           // Each top-level idea's number is assigned once, the first time it's
           // ever rendered, and then kept for good -- so dragging ideas to
-          // reorder them doesn't renumber them.
+          // reorder them doesn't reassign it.
           tree.forEach(function (idea, i) {
             if (typeof idea.num !== "number") idea.num = i + 1;
-            walk(idea, 0, null, String(idea.num), i);
+            walk(idea, 0, null, i);
           });
           byId = next;
 
@@ -1199,9 +1203,7 @@
             .classed("is-root", function (d) { return d.depth === 0; })
             .classed("is-adoptable", function (d) { return d.adoptable; })
             .attr("aria-label", function (d) {
-              return "Idea " + d.label + ": " + d.text + ". " +
-                (d.adoptable ? "Rationally adoptable." : "Not rationally adoptable.") +
-                " Activate to add a criticism.";
+              return "Idea: " + d.text + ". " + statusText(d) + ". Activate to add a criticism.";
             });
           nodeSel.select("circle.core").attr("r", radius);
           nodeSel.select("circle.ring").attr("r", function (d) { return radius(d) + 4; });
