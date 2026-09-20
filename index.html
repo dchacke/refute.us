@@ -263,6 +263,21 @@
   .reset-btn { right: auto; left: 0.75rem; width: auto; }
   .fit-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
+  .info-btn {
+    top: auto;
+    bottom: 0.75rem;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 0.95rem;
+    font-style: italic;
+    border-radius: 50%;
+  }
+
   .tip {
     position: absolute;
     z-index: 2;
@@ -556,6 +571,14 @@
     line-height: 1.5;
   }
 
+  /* Info-mode content is set as trusted, hand-authored HTML (multiple
+     paragraphs, a book title, links) rather than the plain text used
+     everywhere else in the modal. */
+  .modal-message p { margin: 0 0 0.75rem; }
+  .modal-message p:last-child { margin-bottom: 0; }
+  .modal-message a { color: var(--button-bg); }
+  .modal-message a:hover { text-decoration: none; }
+
   .modal-quote {
     margin: 0;
     padding: 0.5rem 0 0.5rem 0.875rem;
@@ -623,6 +646,7 @@
     .timeline { padding: 0.625rem 1rem calc(0.625rem + env(safe-area-inset-bottom, 0px)); }
     .fit-btn { top: 0.5rem; right: 0.5rem; }
     .reset-btn { right: auto; left: 0.5rem; }
+    .info-btn { bottom: 0.5rem; right: 0.5rem; }
   }
 </style>
 </head>
@@ -635,6 +659,7 @@
         <p class="empty-hint" id="empty-hint">Tap anywhere in empty space to add your first idea.</p>
         <button type="button" class="fit-btn" id="fit-btn">Fit</button>
         <button type="button" class="fit-btn reset-btn" id="reset-btn">Reset</button>
+        <button type="button" class="fit-btn info-btn" id="info-btn" aria-label="About this app">i</button>
         <div class="tip" id="tip" hidden>
           <span class="tip-id" id="tip-id"></span><span class="tip-text" id="tip-text"></span>
           <div class="tip-status" id="tip-status"></div>
@@ -669,9 +694,9 @@
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <h2 class="modal-title" id="modal-title">New idea</h2>
       <form class="modal-form" id="modal-form">
+        <div class="modal-message" id="modal-message" hidden></div>
         <blockquote class="modal-quote" id="modal-quote" hidden></blockquote>
         <textarea class="modal-textarea" id="modal-textarea" aria-label="New idea"></textarea>
-        <p class="modal-message" id="modal-message" hidden></p>
         <div class="modal-actions">
           <button type="button" class="modal-btn modal-btn--ghost" id="modal-cancel">Cancel</button>
           <button type="button" class="modal-btn modal-btn--primary" id="modal-submit">Add</button>
@@ -1481,15 +1506,21 @@
       // opts: title, buttonText, onSubmit, and either
       //   { placeholder, quote }               -- a text-entry modal, optionally
       //                                            quoting the idea it's about, or
-      //   { mode: "confirm", message, danger } -- a yes/no confirmation
+      //   { mode: "confirm", message, danger } -- a yes/no confirmation, or
+      //   { mode: "info", message }            -- a read-only note, single Close button
       function openModal(opts) {
-        modalMode = opts.mode === "confirm" ? "confirm" : "form";
+        modalMode = opts.mode === "confirm" ? "confirm" : opts.mode === "info" ? "info" : "form";
         modalTitle.textContent = opts.title;
-        modalSubmitBtn.textContent = opts.buttonText;
-        modalSubmitBtn.classList.toggle("modal-btn--primary", !opts.danger);
-        modalSubmitBtn.classList.toggle("modal-btn--danger", !!opts.danger);
         modalOnSubmit = opts.onSubmit;
         modalOpener = document.activeElement;
+
+        modalSubmitBtn.hidden = modalMode === "info";
+        if (modalMode !== "info") {
+          modalSubmitBtn.textContent = opts.buttonText;
+          modalSubmitBtn.classList.toggle("modal-btn--primary", !opts.danger);
+          modalSubmitBtn.classList.toggle("modal-btn--danger", !!opts.danger);
+        }
+        modalCancelBtn.textContent = modalMode === "info" ? (opts.buttonText || "Close") : "Cancel";
 
         if (opts.quote) {
           modalQuote.textContent = opts.quote;
@@ -1498,10 +1529,16 @@
           modalQuote.hidden = true;
         }
 
-        if (modalMode === "confirm") {
+        if (modalMode === "confirm" || modalMode === "info") {
           modalTextarea.hidden = true;
           modalMessage.hidden = false;
-          modalMessage.textContent = opts.message || "";
+          // Info-mode content is always our own hand-written copy (never
+          // user-entered text), so it's set as HTML to allow paragraphs,
+          // an italicized title and real links; everything else here is
+          // plain text set via textContent, since it may echo back text
+          // someone typed (an idea, a criticism).
+          if (modalMode === "info") modalMessage.innerHTML = opts.message || "";
+          else modalMessage.textContent = opts.message || "";
         } else {
           modalTextarea.hidden = false;
           modalMessage.hidden = true;
@@ -1521,9 +1558,9 @@
         // was originally written for (see its pointerdown handler); this is
         // just a small safety margin in case some other path opens the modal.
         modalIgnoreClicksUntil = Date.now() + 50;
-        // Default focus goes to Cancel for a destructive confirmation, so a
-        // stray extra tap doesn't delete anything.
-        (modalMode === "confirm" ? modalCancelBtn : modalTextarea).focus();
+        // Default focus goes to Cancel/Close for anything that isn't a text
+        // entry, so a stray extra tap doesn't submit or delete anything.
+        (modalMode === "form" ? modalTextarea : modalCancelBtn).focus();
       }
 
       function closeModal() {
@@ -1646,6 +1683,18 @@
       };
 
       document.getElementById("fit-btn").addEventListener("click", function () { forest.fit(); });
+
+      document.getElementById("info-btn").addEventListener("click", function () {
+        openModal({
+          mode: "info",
+          title: "About this app",
+          message:
+            "<p>We can rationally adopt an idea only if it has no pending criticisms – not because it’s been proven, but because it has, so far, survived scrutiny. That follows Karl Popper’s view that theories are never proven true, only ever tentatively accepted until refuted.</p>" +
+            "<p>In <em>Objective Knowledge</em>, Popper wants “a concise report evaluating the state (at a certain time <em>t</em>) of the critical discussion of a theory, with respect to the way it solves its problems…” The banner at the top of the page, and the timeline at the bottom are, in that sense, a running report of the current state of the discussion.</p>" +
+            "<p>This page is a small visual preview of the features on <a href=\"https://veritula.com\" target=\"_blank\" rel=\"noopener noreferrer\">veritula.com</a>. It’s meant as a modern-day solution to the ancient philosophical problem of how to form a <em>rational preference</em> between competing ideas. Built by <a href=\"https://dennishackethal.com\" target=\"_blank\" rel=\"noopener noreferrer\">Dennis Hackethal</a>.</p>",
+          buttonText: "Close"
+        });
+      });
 
       document.getElementById("reset-btn").addEventListener("click", function () {
         openModal({
