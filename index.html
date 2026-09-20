@@ -863,6 +863,40 @@
           }
         }
 
+        // Two siblings trading places can't actually swap through the normal
+        // simulation forces alone: pinned to the same row and kept apart by
+        // collision, whichever one isn't being manually dragged has no way
+        // to cross the other, so they just end up pushed up against each
+        // other instead of trading places. A drag avoids this because the
+        // dragged node's position is driven directly (by the pointer) rather
+        // than by physics, so it can force its way past. This does the same
+        // thing programmatically for any node whose rank among its siblings
+        // just changed (a drag-drop, or scrubbing the timeline across one):
+        // drive it straight to its new spot over a short animation, letting
+        // the simulation handle everything else as usual in parallel.
+        function assistedMove(node) {
+          if (node.moveTimer) { node.moveTimer.stop(); node.moveTimer = null; }
+          var x0 = node.x, y0 = node.y, x1 = node.tx, y1 = node.ty;
+          if (reduceMotion) {
+            node.x = x1; node.y = y1;
+            node.fx = null; node.fy = null;
+            return;
+          }
+          var duration = 220;
+          node.fx = x0; node.fy = y0;
+          node.moveTimer = d3.timer(function (elapsed) {
+            var t = Math.min(1, elapsed / duration);
+            var e = d3.easeCubicInOut(t);
+            node.fx = x0 + (x1 - x0) * e;
+            node.fy = y0 + (y1 - y0) * e;
+            if (t >= 1) {
+              node.fx = null;
+              node.fy = null;
+              if (node.moveTimer) { node.moveTimer.stop(); node.moveTimer = null; }
+            }
+          });
+        }
+
         // Pan and zoom. Until you do it yourself, the forest is kept fitted to the pane.
         var zoom = d3.zoom()
           .scaleExtent([0.3, 4])
@@ -966,14 +1000,21 @@
 
           function jitter(spread) { return (Math.random() - 0.5) * spread; }
 
-          function walk(idea, depth, parentId, label) {
+          function walk(idea, depth, parentId, label, rank) {
             var id = idea.id;
             var node = byId[id] || { id: id, fresh: true };
+            var prevRank = node.rank;
             node.text = idea.text;
             node.depth = depth;
             node.parentId = parentId;
             node.label = label; // the number shown in the label, e.g. "1.2"
             node.adoptable = !!lastStatus[id];
+            node.rank = rank; // this idea's current position among its siblings
+            // True when this node existed before and has changed which of its
+            // siblings it sits next to -- e.g. a drag-to-reorder, or scrubbing
+            // the timeline to a point before/after one. The node still needs
+            // to actually get there (see assistedMove below).
+            node.orderChanged = typeof prevRank === "number" && prevRank !== rank;
             // A "pending" criticism is a direct child that's currently
             // rationally adoptable itself -- that's what's blocking this idea.
             node.pendingCount = idea.children.filter(function (c) { return !!lastStatus[c.id]; }).length;
@@ -985,7 +1026,7 @@
             // doesn't renumber them.
             idea.children.forEach(function (c, i) {
               if (typeof c.num !== "number") c.num = i + 1;
-              walk(c, depth + 1, id, label + "." + c.num);
+              walk(c, depth + 1, id, label + "." + c.num, i);
             });
           }
           // Each top-level idea's number is assigned once, the first time it's
@@ -993,7 +1034,7 @@
           // reorder them doesn't renumber them.
           tree.forEach(function (idea, i) {
             if (typeof idea.num !== "number") idea.num = i + 1;
-            walk(idea, 0, null, String(idea.num));
+            walk(idea, 0, null, String(idea.num), i);
           });
           byId = next;
 
@@ -1022,6 +1063,9 @@
             nodes.forEach(function (node) {
               node.tx = width / 2 + node.lx - cx;
               node.ty = TOP + node.depth * Y_GAP;
+            });
+            nodes.forEach(function (node) {
+              if (node.orderChanged && node.fx == null) assistedMove(node);
             });
             bounds = {
               minX: width / 2 + minX - cx,
