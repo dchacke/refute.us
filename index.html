@@ -900,6 +900,7 @@
                 .on("pointermove", function (e) { placeTip(e.clientX, e.clientY); })
                 .on("pointerleave", hideTip)
                 .on("focus", function (e, d) {
+                  if (interactions.suppressNodeFocusTip) return;
                   showTip(d);
                   var b = this.getBoundingClientRect();
                   placeTip(b.right, b.top);
@@ -1174,7 +1175,14 @@
         modalOnSubmit = null;
         var opener = modalOpener;
         modalOpener = null;
-        if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
+        if (opener && typeof opener.focus === "function" && document.contains(opener)) {
+          // Restoring focus to the node that opened the modal shouldn't re-show
+          // its tooltip -- that's only meant to follow the mouse hovering it or
+          // a real keyboard tab-in, not this programmatic refocus.
+          interactions.suppressNodeFocusTip = true;
+          opener.focus();
+          interactions.suppressNodeFocusTip = false;
+        }
       }
 
       function submitModal() {
