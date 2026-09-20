@@ -933,8 +933,8 @@
           // Top-level ideas are labelled above the node, everything else beside it.
           nodeSel.select("text")
             .attr("text-anchor", function (d) { return d.depth === 0 ? "middle" : "start"; })
-            .attr("x", function (d) { return d.depth === 0 ? 0 : radius(d) + 5; })
-            .attr("y", function (d) { return d.depth === 0 ? -(radius(d) + 8) : 0; })
+            .attr("x", function (d) { return d.depth === 0 ? 0 : radius(d) + 8; })
+            .attr("y", function (d) { return d.depth === 0 ? -(radius(d) + 11) : 0; })
             .attr("dy", function (d) { return d.depth === 0 ? "0" : "0.32em"; })
             .text(labelFor);
 
