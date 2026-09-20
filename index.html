@@ -115,16 +115,38 @@
   }
 
   /* An edge pointing at a rationally adoptable criticism picks up that node's
-     color, and pulses along with it. */
+     color and glow. It stays a solid line -- the "flowing toward the parent"
+     cue is a separate, brighter dash riding on top of it (below), rather
+     than gaps in the edge itself. */
   .forest .link.is-adoptable {
     stroke: var(--node-crit);
-    opacity: 0.7;
+    opacity: 0.85;
   }
 
   @media (prefers-reduced-motion: no-preference) {
     .forest .link.is-adoptable {
       animation: adopt-glow 2.6s ease-in-out infinite;
     }
+  }
+
+  .forest .link-flow {
+    fill: none;
+    stroke: var(--label);
+    stroke-width: 2px;
+    stroke-dasharray: 2 14;
+    opacity: 0.9;
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .forest .link-flow {
+      animation: flow-to-parent 1.1s linear infinite;
+    }
+  }
+
+  @keyframes flow-to-parent {
+    to { stroke-dashoffset: 16; }
   }
 
   .forest .node { cursor: grab; }
@@ -752,8 +774,10 @@
         var bg = svg.append("rect").attr("class", "bg").attr("width", "100%").attr("height", "100%");
         var viewport = svg.append("g");
         var linkLayer = viewport.append("g");
+        var linkFlowLayer = viewport.append("g"); // the "flowing toward parent" overlay, above the edges
         var nodeLayer = viewport.append("g");
         var linkSel = linkLayer.selectAll("path");
+        var linkFlowSel = linkFlowLayer.selectAll("path");
         var nodeSel = nodeLayer.selectAll("g");
 
         // Tapping empty space (the background rect, not a node or link) opens the
@@ -781,12 +805,15 @@
           });
         }
 
+        function linkPath(d) {
+          var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y, my = (sy + ty) / 2;
+          return "M" + sx + "," + sy + "C" + sx + "," + my + " " + tx + "," + my + " " + tx + "," + ty;
+        }
+
         function draw() {
           // Links leave a parent downward and arrive at the child from above.
-          linkSel.attr("d", function (d) {
-            var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y, my = (sy + ty) / 2;
-            return "M" + sx + "," + sy + "C" + sx + "," + my + " " + tx + "," + my + " " + tx + "," + ty;
-          });
+          linkSel.attr("d", linkPath);
+          linkFlowSel.attr("d", linkPath);
           nodeSel.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
         }
 
@@ -946,6 +973,12 @@
             .join("path")
             .attr("class", "link")
             .classed("is-adoptable", function (d) { return d.target.adoptable; });
+
+          var flowLinks = links.filter(function (d) { return d.target.adoptable; });
+          linkFlowSel = linkFlowLayer.selectAll("path")
+            .data(flowLinks, function (d) { return d.target.id; })
+            .join("path")
+            .attr("class", "link-flow");
 
           nodeSel = nodeLayer.selectAll("g.node")
             .data(nodes, function (d) { return d.id; })
