@@ -336,6 +336,20 @@
   .legend-hint:first-of-type { margin-top: 0.25rem; }
   .legend-hint + .legend-hint { margin-top: 0; padding-top: 0; border-top: 0; }
 
+  /* ---------- report banner (state of the discussion) ---------- */
+  .report-banner {
+    flex: none;
+    padding: 0.6rem clamp(1rem, 4vw, 2rem);
+    background: var(--left);
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .report-banner[hidden] { display: none; }
+
   /* ---------- timeline (history scrubber) ---------- */
   .timeline {
     flex: none;
@@ -614,6 +628,7 @@
 </head>
 <body>
   <div class="app">
+    <div class="report-banner" id="report-banner" hidden></div>
     <main class="split">
       <section class="canvas" id="forest-pane" aria-label="Idea forest">
         <svg class="forest" id="forest" role="group" aria-label="Forest of ideas and their criticisms"></svg>
@@ -1301,6 +1316,30 @@
         return n;
       }
 
+      // A one-line report of the state of the discussion right now: how many
+      // of the top-level ideas currently survive their criticisms. Hidden
+      // until there's at least one idea, same as the empty-state hint.
+      var reportBanner = document.getElementById("report-banner");
+      function updateReportBanner(status) {
+        if (!roots.length) { reportBanner.hidden = true; return; }
+        var total = roots.length;
+        var adoptable = roots.filter(function (r) { return status[r.id]; }).length;
+        var text;
+        if (adoptable === total) {
+          text = total === 1
+            ? "The idea is currently rationally adoptable."
+            : "All " + total + " ideas are currently rationally adoptable.";
+        } else if (adoptable === 0) {
+          text = total === 1
+            ? "The idea is not currently rationally adoptable."
+            : "None of the " + total + " ideas are currently rationally adoptable.";
+        } else {
+          text = adoptable + " of " + total + " ideas are currently rationally adoptable.";
+        }
+        reportBanner.textContent = text;
+        reportBanner.hidden = false;
+      }
+
       // Recomputes adoptability and redraws the chart.
       function refresh() {
         var status = {};
@@ -1309,6 +1348,7 @@
         var total = countIdeas(roots);
         emptyHint.hidden = total > 1;
         emptyHint.textContent = total === 1 ? HINT_SECOND : HINT_FIRST;
+        updateReportBanner(status);
       }
 
       // Called after every change: refresh the chart, then record this as a new
