@@ -463,6 +463,10 @@
   .timeline-tick.is-active {
     background: var(--button-bg);
     border-color: var(--button-bg);
+    /* Now that ticks line up exactly with the thumb's position, the active
+       one sits right on top of it -- pass clicks through so the thumb
+       underneath can still be grabbed and dragged. */
+    pointer-events: none;
   }
 
   .timeline-tick:hover { border-color: var(--focus); }
