@@ -213,7 +213,7 @@
   .fit-btn:hover { background: rgba(255, 255, 255, 0.16); }
   .fit-btn:active { transform: translateY(1px); }
 
-  .reset-btn { right: auto; left: 0.75rem; }
+  .reset-btn { right: auto; left: 0.75rem; width: auto; }
   .fit-btn:focus-visible { outline: 3px solid var(--label); outline-offset: 2px; }
 
   .tip {
@@ -512,6 +512,7 @@
   @media (max-width: 720px) {
     .timeline { padding: 0.625rem 1rem calc(0.625rem + env(safe-area-inset-bottom, 0px)); }
     .fit-btn { top: 0.5rem; right: 0.5rem; }
+    .reset-btn { right: auto; left: 0.5rem; }
   }
 </style>
 </head>
