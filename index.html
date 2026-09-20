@@ -765,9 +765,9 @@
         function fit(animate) {
           if (!bounds || userMoved) return;
           var contentW = bounds.maxX - bounds.minX + 160;
-          var contentH = bounds.maxY + 90;
+          var contentH = bounds.maxY + 130;
           var k = Math.max(0.3, Math.min(1.6, width / contentW, height / contentH));
-          var t = d3.zoomIdentity.translate(width / 2 * (1 - k), 0).scale(k);
+          var t = d3.zoomIdentity.translate(width / 2 * (1 - k), 40).scale(k);
           if (animate && !reduceMotion) svg.transition().duration(500).call(zoom.transform, t);
           else svg.call(zoom.transform, t);
         }
