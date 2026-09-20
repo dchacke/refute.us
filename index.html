@@ -159,10 +159,8 @@
 
   .forest .node.is-root:not(.is-adoptable) circle.core { stroke: var(--node-root); }
 
-  .forest .node:hover circle.core,
-  .forest .node:focus-visible circle.core,
-  .forest .node.is-root:hover circle.core,
-  .forest .node.is-root:focus-visible circle.core {
+  .forest .node.is-highlighted circle.core,
+  .forest .node.is-root.is-highlighted circle.core {
     stroke: var(--label);
     stroke-width: 2.5px;
   }
@@ -933,16 +931,27 @@
               g.append("circle").attr("class", "core");
               g.append("text");
               g.call(drag)
-                .on("pointerenter", function (e, d) { showTip(d); placeTip(e.clientX, e.clientY); })
+                .on("pointerenter", function (e, d) {
+                  this.classList.add("is-highlighted");
+                  showTip(d);
+                  placeTip(e.clientX, e.clientY);
+                })
                 .on("pointermove", function (e) { placeTip(e.clientX, e.clientY); })
-                .on("pointerleave", hideTip)
+                .on("pointerleave", function () {
+                  this.classList.remove("is-highlighted");
+                  hideTip();
+                })
                 .on("focus", function (e, d) {
                   if (interactions.suppressNodeFocusTip) return;
+                  this.classList.add("is-highlighted");
                   showTip(d);
                   var b = this.getBoundingClientRect();
                   placeTip(b.right, b.top);
                 })
-                .on("blur", hideTip);
+                .on("blur", function () {
+                  this.classList.remove("is-highlighted");
+                  hideTip();
+                });
               // Tapping a node opens the "criticize this idea" form; holding it
               // down without moving opens a delete confirmation instead.
               addPress(g, {
