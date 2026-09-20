@@ -357,7 +357,6 @@
   }
 
   .timeline-info {
-    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: baseline;
@@ -388,24 +387,16 @@
     align-items: center;
   }
 
-  /* Sits centered on the same line as the state description and count
-     (not over the slider itself); only shown where there's clearly enough
-     horizontal room, hidden by default (mobile-first) and on narrow windows. */
+  /* Sits below the slider track, centered. */
   .timeline-hint {
-    display: none;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    display: block;
+    margin-top: 0.25rem;
+    text-align: center;
+    white-space: nowrap;
     font-size: 0.75rem;
     font-weight: 400;
     color: var(--muted);
-    white-space: nowrap;
     pointer-events: none;
-  }
-
-  @media (min-width: 640px) {
-    .timeline-hint { display: block; }
   }
 
   .timeline-hint[hidden] { display: none; }
@@ -639,7 +630,6 @@
     <footer class="timeline" id="timeline" aria-label="Idea history">
       <div class="timeline-info">
         <span class="timeline-label" id="timeline-label">Start</span>
-        <span class="timeline-hint" id="timeline-hint" aria-hidden="true">Click or drag to restore a previous state.</span>
         <span class="timeline-count" id="timeline-count">1 / 1</span>
       </div>
       <div class="timeline-track-wrap">
@@ -648,6 +638,7 @@
           aria-label="History: drag to a point in time, or use the arrow keys">
         <div class="timeline-ticks" id="timeline-ticks" aria-hidden="true"></div>
       </div>
+      <span class="timeline-hint" id="timeline-hint" aria-hidden="true">Scrub to time-travel.</span>
     </footer>
   </div>
 
@@ -1261,6 +1252,7 @@
       var timelineSlider = document.getElementById("timeline-slider");
       var timelineTicks = document.getElementById("timeline-ticks");
       var timelineHint = document.getElementById("timeline-hint");
+      var timelineFooter = document.getElementById("timeline");
 
       function formatTime(t) {
         try {
@@ -1272,6 +1264,8 @@
 
       function updateTimelineUI() {
         var n = history.length;
+        timelineFooter.hidden = n <= 1;
+        if (n <= 1) return;
         timelineSlider.max = String(Math.max(0, n - 1));
         timelineSlider.value = String(cursor);
         timelineSlider.disabled = n <= 1;
