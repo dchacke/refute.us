@@ -23,7 +23,7 @@
     --node-root: #d4b982;
     --node-crit: #ff5a52;
     --label: #e6e9f0;
-    --label-dim: #808caa;
+    --label-dim: #9aa3bc;
     --tip-bg: #e8ebf0;
     --tip-fg: #1b2233;
     --tip-muted: #566078;
@@ -398,13 +398,13 @@
 
   .timeline-slider::-webkit-slider-runnable-track {
     height: 4px;
-    background: var(--rule);
+    background: color-mix(in srgb, var(--rule) 55%, white);
     border-radius: 2px;
   }
 
   .timeline-slider::-moz-range-track {
     height: 4px;
-    background: var(--rule);
+    background: color-mix(in srgb, var(--rule) 55%, white);
     border-radius: 2px;
   }
 
@@ -448,8 +448,8 @@
     position: absolute;
     top: 0;
     transform: translate(-50%, -50%);
-    width: 9px;
-    height: 9px;
+    width: 13px;
+    height: 13px;
     padding: 0;
     border-radius: 50%;
     background: var(--field-bg);
