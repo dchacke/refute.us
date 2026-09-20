@@ -600,6 +600,7 @@
           <li class="legend-hint">Tap empty space to add an idea.</li>
           <li class="legend-hint">Tap an idea to criticize it.</li>
           <li class="legend-hint">Tap and hold an idea to delete it.</li>
+          <li class="legend-hint">Drag an idea past a sibling to reorder them.</li>
         </ul>
       </section>
     </main>
@@ -862,6 +863,26 @@
         if (window.ResizeObserver) new ResizeObserver(resize).observe(pane);
         else window.addEventListener("resize", resize);
 
+        // Dragging an idea left/right past a sibling (top-level or criticism)
+        // reorders them for real (persisted, undoable like any other change);
+        // vertical movement (between levels) just springs back on release.
+        function reorderSiblingsByPosition(d) {
+          var list = d.parentId ? findIdea(d.parentId).children : roots;
+          var order = Object.keys(byId)
+            .map(function (id) { return byId[id]; })
+            .filter(function (n) { return n.parentId === d.parentId && n.depth === d.depth; })
+            .sort(function (a, b) { return a.x - b.x; })
+            .map(function (n) { return n.id; });
+          var currentOrder = list.map(function (r) { return r.id; });
+          if (order.join() === currentOrder.join()) return false;
+          var byIdea = {};
+          list.forEach(function (r) { byIdea[r.id] = r; });
+          var reordered = order.map(function (id) { return byIdea[id]; });
+          if (d.parentId) { findIdea(d.parentId).children = reordered; }
+          else { roots = reordered; }
+          return true;
+        }
+
         var drag = d3.drag()
           .on("start", function (e, d) {
             if (!e.active) sim.alphaTarget(0.3).restart();
@@ -872,6 +893,9 @@
             // Let go and the node springs back to its place in the hierarchy.
             if (!e.active) sim.alphaTarget(0);
             d.fx = null; d.fy = null;
+            if (reorderSiblingsByPosition(d)) {
+              commit("reorder", "Reordered ideas");
+            }
           });
 
         /* tooltip */
@@ -918,9 +942,21 @@
             next[id] = node;
             nodes.push(node);
             if (parentId) links.push({ source: parentId, target: id });
-            idea.children.forEach(function (c, i) { walk(c, depth + 1, id, label + "." + (i + 1)); });
+            // Same deal as the top-level numbering below: a criticism's number
+            // is assigned once and kept for good, so reordering siblings
+            // doesn't renumber them.
+            idea.children.forEach(function (c, i) {
+              if (typeof c.num !== "number") c.num = i + 1;
+              walk(c, depth + 1, id, label + "." + c.num);
+            });
           }
-          tree.forEach(function (idea, i) { walk(idea, 0, null, String(i + 1)); });
+          // Each top-level idea's number is assigned once, the first time it's
+          // ever rendered, and then kept for good -- so dragging ideas to
+          // reorder them doesn't renumber them.
+          tree.forEach(function (idea, i) {
+            if (typeof idea.num !== "number") idea.num = i + 1;
+            walk(idea, 0, null, String(idea.num));
+          });
           byId = next;
 
           bounds = null;
@@ -1066,14 +1102,18 @@
         if (typeof x === "string") return { id: uid(), text: x, children: [] };
         if (x && typeof x.text === "string") {
           var kids = Array.isArray(x.children) ? x.children.map(normalize).filter(Boolean) : [];
-          return { id: (typeof x.id === "string" && x.id) ? x.id : uid(), text: x.text, children: kids };
+          var idea = { id: (typeof x.id === "string" && x.id) ? x.id : uid(), text: x.text, children: kids };
+          if (typeof x.num === "number") idea.num = x.num;
+          return idea;
         }
         return null;
       }
 
       function cloneTree(list) {
         return list.map(function (n) {
-          return { id: n.id, text: n.text, children: cloneTree(n.children) };
+          var copy = { id: n.id, text: n.text, children: cloneTree(n.children) };
+          if (typeof n.num === "number") copy.num = n.num;
+          return copy;
         });
       }
 
@@ -1354,9 +1394,10 @@
           placeholder: "What's the idea?",
           buttonText: "Add",
           onSubmit: function (text) {
-            var idea = { id: uid(), text: text, children: [] };
+            var maxNum = roots.reduce(function (m, r) { return typeof r.num === "number" && r.num > m ? r.num : m; }, 0);
+            var idea = { id: uid(), text: text, children: [], num: maxNum + 1 };
             roots.push(idea);
-            commit("add", "Added idea " + String(roots.length));
+            commit("add", "Added idea " + String(idea.num));
           }
         });
       };
@@ -1370,9 +1411,10 @@
           placeholder: "Criticize this idea",
           buttonText: "Criticize",
           onSubmit: function (text) {
-            var child = { id: uid(), text: text, children: [] };
+            var maxNum = target.children.reduce(function (m, c) { return typeof c.num === "number" && c.num > m ? c.num : m; }, 0);
+            var child = { id: uid(), text: text, children: [], num: maxNum + 1 };
             target.children.push(child);
-            var childLabel = d.label + "." + target.children.length;
+            var childLabel = d.label + "." + child.num;
             commit("add", "Criticized idea " + d.label + " (added " + childLabel + ")");
           }
         });
