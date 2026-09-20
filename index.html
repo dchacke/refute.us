@@ -5,18 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Idea forest</title>
 <style>
+  /* Dark mode is always on, regardless of the system color scheme. */
   :root {
-    --left: #e8ebf0;
-    --right: #1f2a44;
-    --divider: #c2a878;
-    --ink: #1b2233;
-    --muted: #566078;
-    --rule: #c6ccd8;
-    --field-bg: #f7f8fa;
-    --field-border: #a4adbd;
-    --button-bg: #1f2a44;
-    --button-fg: #ffffff;
-    --focus: #1f2a44;
+    --left: #262c3a;
+    --right: #0d1220;
+    --divider: #8a7550;
+    --ink: #e6e9f0;
+    --muted: #a3acc0;
+    --rule: #3d465a;
+    --field-bg: #1a1f2b;
+    --field-border: #4f5970;
+    --button-bg: #c9b184;
+    --button-fg: #0d1220;
+    --focus: #c9b184;
     /* the canvas is dark in both themes, so these stay the same */
     --link: rgba(232, 235, 240, 0.32);
     --node-root: #d4b982;
@@ -29,36 +30,6 @@
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --left: #262c3a;
-      --right: #0d1220;
-      --divider: #8a7550;
-      --ink: #e6e9f0;
-      --muted: #a3acc0;
-      --rule: #3d465a;
-      --field-bg: #1a1f2b;
-      --field-border: #4f5970;
-      --button-bg: #c9b184;
-      --button-fg: #0d1220;
-      --focus: #c9b184;
-    }
-  }
-
-  :root[data-theme="dark"] {
-    --left: #262c3a;
-    --right: #0d1220;
-    --divider: #8a7550;
-    --ink: #e6e9f0;
-    --muted: #a3acc0;
-    --rule: #3d465a;
-    --field-bg: #1a1f2b;
-    --field-border: #4f5970;
-    --button-bg: #c9b184;
-    --button-fg: #0d1220;
-    --focus: #c9b184;
   }
 
   html {
