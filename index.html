@@ -696,6 +696,7 @@
         var lastStatus = {};
         var bounds = null;      // extent of the laid-out forest, used to fit it in view
         var userMoved = false;  // once you pan or zoom yourself, auto-fit stops
+        var wasEmpty = true;    // any pan/zoom while there was nothing to see shouldn't stick
 
         var svg = d3.select("#forest");
         var bg = svg.append("rect").attr("class", "bg").attr("width", "100%").attr("height", "100%");
@@ -938,6 +939,12 @@
             .attr("y", function (d) { return d.depth === 0 ? -(radius(d) + 11) : 0; })
             .attr("dy", function (d) { return d.depth === 0 ? "0" : "0.32em"; })
             .text(labelFor);
+
+          // The very first idea (or the first one after a reset) should always
+          // land nicely in view -- any pan/zoom that happened while the canvas
+          // was still empty didn't matter yet, so it shouldn't block this fit.
+          if (nodes.length > 0 && wasEmpty) userMoved = false;
+          wasEmpty = nodes.length === 0;
 
           reheat(0.7);
           fit(true);
