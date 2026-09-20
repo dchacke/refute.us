@@ -1336,9 +1336,22 @@
       var timelineHint = document.getElementById("timeline-hint");
       var timelineFooter = document.getElementById("timeline");
 
+      // Time alone for today; the full date is added once it's no longer today,
+      // since "04:40:37 PM" stops being enough to place an event on its own.
       function formatTime(t) {
         try {
-          return new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          var d = new Date(t);
+          var now = new Date();
+          var sameDay = d.getFullYear() === now.getFullYear() &&
+            d.getMonth() === now.getMonth() &&
+            d.getDate() === now.getDate();
+          var opts = { hour: "2-digit", minute: "2-digit", second: "2-digit" };
+          if (!sameDay) {
+            opts.year = "numeric";
+            opts.month = "short";
+            opts.day = "numeric";
+          }
+          return d.toLocaleString([], opts);
         } catch (err) {
           return "";
         }
@@ -1375,10 +1388,30 @@
         });
       }
 
+      // While the knob is actively being moved, the hint text is swapped for
+      // that point in time's timestamp; letting go restores the usual hint.
+      var TIMELINE_HINT_DEFAULT = timelineHint.textContent;
+
       timelineSlider.addEventListener("input", function () {
         var idx = parseInt(timelineSlider.value, 10);
         if (!Number.isNaN(idx) && idx !== cursor) restoreTo(idx);
+        timelineHint.textContent = formatTime(history[cursor].time);
       });
+
+      // "change" alone isn't reliable for this: iOS Safari only fires it on
+      // blur, not on touch release, so if the slider keeps focus after you
+      // lift your finger, the timestamp would otherwise stay stuck. Range
+      // inputs capture the pointer for the whole drag, so "pointerup" (and
+      // "pointercancel", e.g. an interrupted touch) fire on the slider
+      // itself regardless of where the release happens -- a more reliable
+      // signal that the drag is actually over.
+      function revertTimelineHint() {
+        timelineHint.textContent = TIMELINE_HINT_DEFAULT;
+      }
+      timelineSlider.addEventListener("pointerup", revertTimelineHint);
+      timelineSlider.addEventListener("pointercancel", revertTimelineHint);
+      timelineSlider.addEventListener("change", revertTimelineHint);
+      timelineSlider.addEventListener("blur", revertTimelineHint);
 
       /* ---------- modal ---------- */
       // Shared by both "new idea" and "criticize idea" -- only the title,
