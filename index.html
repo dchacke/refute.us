@@ -521,7 +521,7 @@
     <main class="split">
       <section class="canvas" id="forest-pane" aria-label="Idea forest">
         <svg class="forest" id="forest" role="group" aria-label="Forest of ideas and their criticisms"></svg>
-        <p class="empty-hint" id="empty-hint">Tap anywhere to add your first idea</p>
+        <p class="empty-hint" id="empty-hint">Tap anywhere to add your first idea.</p>
         <button type="button" class="fit-btn" id="fit-btn">Fit</button>
         <button type="button" class="fit-btn reset-btn" id="reset-btn">Reset</button>
         <div class="tip" id="tip" hidden>
@@ -1036,13 +1036,23 @@
       }
 
       var emptyHint = document.getElementById("empty-hint");
+      var HINT_FIRST = "Tap anywhere to add your first idea.";
+      var HINT_SECOND = "Tap empty space to add another idea. Tap an idea to criticize it.";
+
+      function countIdeas(list) {
+        var n = 0;
+        list.forEach(function (node) { n += 1 + countDescendants(node); });
+        return n;
+      }
 
       // Recomputes adoptability and redraws the chart.
       function refresh() {
         var status = {};
         evaluate(roots, status);
         forest.update(roots, status);
-        emptyHint.hidden = roots.length > 0;
+        var total = countIdeas(roots);
+        emptyHint.hidden = total > 1;
+        emptyHint.textContent = total === 1 ? HINT_SECOND : HINT_FIRST;
       }
 
       // Called after every change: refresh the chart, then record this as a new
