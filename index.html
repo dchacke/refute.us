@@ -1,203 +1,1303 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Split Layout Example</title>
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Idea forest</title>
+<style>
+  :root {
+    --left: #e8ebf0;
+    --right: #1f2a44;
+    --divider: #c2a878;
+    --ink: #1b2233;
+    --muted: #566078;
+    --rule: #c6ccd8;
+    --field-bg: #f7f8fa;
+    --field-border: #a4adbd;
+    --button-bg: #1f2a44;
+    --button-fg: #ffffff;
+    --focus: #1f2a44;
+    /* the canvas is dark in both themes, so these stay the same */
+    --link: rgba(232, 235, 240, 0.32);
+    --node-root: #d4b982;
+    --node-crit: #8ea6d4;
+    --label: #e6e9f0;
+    --label-dim: #a9b2c6;
+    --tip-bg: #e8ebf0;
+    --tip-fg: #1b2233;
+    --tip-muted: #566078;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --left: #262c3a;
+      --right: #0d1220;
+      --divider: #8a7550;
+      --ink: #e6e9f0;
+      --muted: #a3acc0;
+      --rule: #3d465a;
+      --field-bg: #1a1f2b;
+      --field-border: #4f5970;
+      --button-bg: #c9b184;
+      --button-fg: #0d1220;
+      --focus: #c9b184;
     }
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: stretch;
-      justify-content: stretch;
-    }
-    .container {
-      display: flex;
-      width: 100vw;
-      height: 100vh;
-    }
-    .left, .right {
-      flex: 1;
-      padding: 2rem;
-      box-sizing: border-box;
-    }
-    .left {
-      background: #f0f0f0;
-      border-right: 2px solid #ddd;
-    }
-    .right {
-      background: #fff;
-    }
-    @media (max-width: 700px) {
-      .container {
-        flex-direction: column;
-      }
-      .left, .right {
-        border-right: none;
-        border-bottom: 2px solid #ddd;
-      }
-      .right {
-        border-bottom: none;
-      }
-    }
-  </style>
+  }
+
+  :root[data-theme="dark"] {
+    --left: #262c3a;
+    --right: #0d1220;
+    --divider: #8a7550;
+    --ink: #e6e9f0;
+    --muted: #a3acc0;
+    --rule: #3d465a;
+    --field-bg: #1a1f2b;
+    --field-border: #4f5970;
+    --button-bg: #c9b184;
+    --button-fg: #0d1220;
+    --focus: #c9b184;
+  }
+
+  html {
+    height: 100%;
+    scroll-padding-top: env(safe-area-inset-top, 0px);
+    background: var(--right);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    height: 100%;
+    margin: 0;
+    background: var(--right);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .split {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+  }
+
+  .canvas {
+    position: relative;
+    flex: 1 1 auto;
+    overflow: hidden;
+    background: var(--right);
+  }
+
+  /* ---------- forest chart ---------- */
+  .forest {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+  }
+
+  .forest .bg { fill: transparent; }
+
+  .forest .link {
+    fill: none;
+    stroke: var(--link);
+    stroke-width: 1.5px;
+  }
+
+  .forest .node { cursor: grab; }
+  .forest .node:focus { outline: none; }
+
+  /* Adoptable nodes are solid with an outer ring; the rest are hollow. Colour still says
+     which level a node is on (gold = top-level idea, blue = criticism). */
+  .forest .node circle.ring {
+    fill: none;
+    stroke: var(--node-crit);
+    stroke-width: 1.5px;
+    opacity: 0.7;
+  }
+
+  .forest .node.is-root circle.ring { stroke: var(--node-root); }
+  .forest .node:not(.is-adoptable) circle.ring { display: none; }
+
+  .forest .node circle.core {
+    fill: var(--node-crit);
+    stroke: var(--right);
+    stroke-width: 2px;
+  }
+
+  .forest .node.is-root circle.core { fill: var(--node-root); }
+
+  .forest .node:not(.is-adoptable) circle.core {
+    fill: var(--right);
+    stroke: var(--node-crit);
+  }
+
+  .forest .node.is-root:not(.is-adoptable) circle.core { stroke: var(--node-root); }
+
+  .forest .node:hover circle.core,
+  .forest .node:focus-visible circle.core {
+    stroke: var(--label);
+    stroke-width: 2.5px;
+  }
+
+  /* Fades in while a node is held down, as a cue that a long-press is arming. */
+  .forest .node.is-pressing circle.ring {
+    display: block;
+    stroke: var(--label);
+    stroke-width: 2.5px;
+    animation: press-ring 0.55s ease-in forwards;
+  }
+
+  @keyframes press-ring {
+    from { opacity: 0.1; }
+    to { opacity: 1; }
+  }
+
+  .forest .node text {
+    fill: var(--label);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    paint-order: stroke;
+    stroke: var(--right);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    pointer-events: none;
+  }
+
+  .forest .node.is-root text { font-size: 11.5px; font-weight: 600; }
+  .forest .node:not(.is-adoptable) text { fill: var(--label-dim); }
+
+  /* Shown only until the first idea exists, since that's otherwise the only
+     way to discover that the canvas itself is where you add one. */
+  .empty-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    color: var(--label-dim);
+    font-size: 1.05rem;
+    pointer-events: none;
+  }
+
+  .empty-hint[hidden] { display: none; }
+
+  .fit-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 3;
+    padding: 0.5rem 0.9rem;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--label);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--link);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .fit-btn:hover { background: rgba(255, 255, 255, 0.16); }
+  .fit-btn:active { transform: translateY(1px); }
+
+  .reset-btn { right: auto; left: 0.75rem; }
+  .fit-btn:focus-visible { outline: 3px solid var(--label); outline-offset: 2px; }
+
+  .tip {
+    position: absolute;
+    z-index: 2;
+    max-width: min(18rem, calc(100% - 1rem));
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--tip-fg);
+    background: var(--tip-bg);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+  }
+
+  .tip-id {
+    margin-right: 0.5rem;
+    color: var(--tip-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tip-status {
+    margin-top: 0.25rem;
+    color: var(--tip-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .tip-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 8;
+    overflow: hidden;
+  }
+
+  .legend {
+    position: absolute;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8rem;
+    color: var(--label-dim);
+    pointer-events: none;
+  }
+
+  .legend li { display: flex; align-items: center; gap: 0.5rem; }
+  .legend svg { flex: none; }
+  .legend .key-ring { fill: none; stroke: var(--node-crit); stroke-width: 1.5px; opacity: 0.7; }
+  .legend .key-on { fill: var(--node-crit); stroke: var(--right); stroke-width: 2px; }
+  .legend .key-off { fill: var(--right); stroke: var(--node-crit); stroke-width: 2px; }
+
+  .legend-hint {
+    margin-top: 0.15rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--link);
+  }
+
+  .legend-hint:first-of-type { margin-top: 0.25rem; }
+  .legend-hint + .legend-hint { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  /* ---------- timeline (history scrubber) ---------- */
+  .timeline {
+    flex: none;
+    padding: 0.75rem clamp(1rem, 4vw, 2rem) calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: var(--left);
+    border-top: 1px solid var(--rule);
+  }
+
+  .timeline-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--ink);
+  }
+
+  .timeline-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  .timeline-count {
+    flex: none;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timeline-track-wrap {
+    position: relative;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .timeline-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 1.5rem;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .timeline-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--rule);
+    border-radius: 2px;
+  }
+
+  .timeline-slider::-moz-range-track {
+    height: 4px;
+    background: var(--rule);
+    border-radius: 2px;
+  }
+
+  .timeline-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    margin-top: -8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--button-bg);
+    border: 3px solid var(--left);
+    box-shadow: 0 0 0 1px var(--field-border);
+  }
+
+  .timeline-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--button-bg);
+    border: 3px solid var(--left);
+    box-shadow: 0 0 0 1px var(--field-border);
+  }
+
+  .timeline-slider:disabled { cursor: default; opacity: 0.5; }
+
+  .timeline-slider:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+
+  .timeline-ticks {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .timeline-tick {
+    position: absolute;
+    top: 0;
+    transform: translate(-50%, -50%);
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--field-bg);
+    border: 2px solid var(--field-border);
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  .timeline-tick.is-active {
+    background: var(--button-bg);
+    border-color: var(--button-bg);
+  }
+
+  .timeline-tick:hover { border-color: var(--focus); }
+  .timeline-tick:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  /* ---------- modal ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(10, 12, 18, 0.55);
+  }
+
+  .modal-backdrop[hidden] { display: none; }
+
+  .modal {
+    width: 100%;
+    max-width: 26rem;
+    padding: 1.5rem;
+    background: var(--left);
+    color: var(--ink);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .modal-title {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .modal-textarea {
+    width: 100%;
+    min-height: 8rem;
+    padding: 0.75rem 0.875rem;
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--field-bg);
+    border: 1px solid var(--field-border);
+    border-radius: 6px;
+    resize: vertical;
+  }
+
+  .modal-message {
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .modal-quote {
+    margin: 0;
+    padding: 0.5rem 0 0.5rem 0.875rem;
+    border-left: 3px solid var(--field-border);
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    font-style: italic;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 6rem;
+    overflow-y: auto;
+  }
+
+  .modal-quote[hidden] { display: none; }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+
+  .modal-btn {
+    padding: 0.6rem 1.25rem;
+    font: inherit;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .modal-btn--ghost {
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--field-border);
+  }
+
+  .modal-btn--primary {
+    color: var(--button-fg);
+    background: var(--button-bg);
+    border: 0;
+  }
+
+  .modal-btn--danger {
+    color: #ffffff;
+    background: #b3261e;
+    border: 0;
+  }
+
+  .modal-btn:active { transform: translateY(1px); }
+
+  .modal-textarea:focus-visible,
+  .modal-btn:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 720px) {
+    .timeline { padding: 0.625rem 1rem calc(0.625rem + env(safe-area-inset-bottom, 0px)); }
+    .fit-btn { top: 0.5rem; right: 0.5rem; }
+  }
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="left">
-      <h2>Left Side</h2>
-      <form id="root-idea-form">
-        <label for="user-text">Enter text:</label><br>
-        <textarea id="user-text" name="user-text" rows="6" style="width:100%;"></textarea><br>
-        <button type="submit" style="margin-top:8px;">Submit</button>
+  <div class="app">
+    <main class="split">
+      <section class="canvas" id="forest-pane" aria-label="Idea forest">
+        <svg class="forest" id="forest" role="group" aria-label="Forest of ideas and their criticisms"></svg>
+        <p class="empty-hint" id="empty-hint">Tap anywhere to add your first idea</p>
+        <button type="button" class="fit-btn" id="fit-btn">Fit</button>
+        <button type="button" class="fit-btn reset-btn" id="reset-btn">Reset</button>
+        <div class="tip" id="tip" hidden>
+          <span class="tip-id" id="tip-id"></span><span class="tip-text" id="tip-text"></span>
+          <div class="tip-status" id="tip-status"></div>
+        </div>
+        <ul class="legend" aria-label="Legend">
+          <li><svg width="24" height="24" viewBox="-12 -12 24 24" aria-hidden="true"><circle class="key-ring" r="9"></circle><circle class="key-on" r="5"></circle></svg>Rationally adoptable.</li>
+          <li><svg width="24" height="24" viewBox="-12 -12 24 24" aria-hidden="true"><circle class="key-off" r="5"></circle></svg>Not rationally adoptable.</li>
+          <li class="legend-hint">Tap empty space to add an idea.</li>
+          <li class="legend-hint">Tap an idea to criticize it.</li>
+          <li class="legend-hint">Tap and hold an idea to delete it.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="timeline" id="timeline" aria-label="Idea history">
+      <div class="timeline-info">
+        <span class="timeline-label" id="timeline-label">Start</span>
+        <span class="timeline-count" id="timeline-count">1 / 1</span>
+      </div>
+      <div class="timeline-track-wrap">
+        <input type="range" class="timeline-slider" id="timeline-slider"
+          min="0" max="0" step="1" value="0"
+          aria-label="History: drag to a point in time, or use the arrow keys">
+        <div class="timeline-ticks" id="timeline-ticks" aria-hidden="true"></div>
+      </div>
+    </footer>
+  </div>
+
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 class="modal-title" id="modal-title">New idea</h2>
+      <form class="modal-form" id="modal-form">
+        <blockquote class="modal-quote" id="modal-quote" hidden></blockquote>
+        <textarea class="modal-textarea" id="modal-textarea" aria-label="New idea"></textarea>
+        <p class="modal-message" id="modal-message" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-btn--ghost" id="modal-cancel">Cancel</button>
+          <button type="button" class="modal-btn modal-btn--primary" id="modal-submit">Add</button>
+        </div>
       </form>
-      <div id="idea-list" style="margin-top:24px;"><h3>Ideas</h3><ul style="padding-left: 1.2em;" id="ideas-ul"></ul></div>
-    </div>
-    <div class="right">
-      <h2>Right Side</h2>
-      <div id="chartdiv" style="width: 100%; height: 500px;"></div>
     </div>
   </div>
-  <!-- amCharts 5 modules loaded from CDN (guaranteed order) -->
-  <script src="https://cdn.amcharts.com/lib/5/index.js"></script>
-<script src="https://cdn.amcharts.com/lib/5/hierarchy.js"></script>
-<script>
-// --- begin amCharts and app logic ---
 
-am5.ready(function() {
-  // --- Idea list, FORMS, and amCharts logic ---
-  let ideas = [];
-  let ideaId = 1;
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <script>
+    (function () {
+      var STORAGE_KEY = "ideas";       // legacy key, read only, for migration
+      var HISTORY_KEY = "ideas-history-v1";
+      var roots = []; // each idea: { id: string, text: string, children: [idea, ...] }
 
-  function renderIdeaList() {
-    const ul = document.getElementById('ideas-ul');
-    ul.innerHTML = '';
-    function renderIdeaNode(idea, level) {
-      const li = document.createElement('li');
-      li.style.marginLeft = (level * 28) + 'px';
-      li.innerHTML = `<strong>${idea.id}.</strong> ${idea.text}`;
-      const form = document.createElement('form');
-      form.style.marginTop = '6px';
-      form.innerHTML = `
-        <textarea rows="2" style="width:80%; resize: vertical" placeholder="Critique this idea..."></textarea>
-        <button type="submit">Critique</button>
-      `;
-      const textarea = form.querySelector('textarea');
-      textarea.addEventListener('keydown', function(e) {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-          e.preventDefault();
-          form.requestSubmit();
-        }
-      });
-      form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const val = textarea.value.trim();
-        if (!val) return;
-        idea.children.push({id: ideaId++, text: val, children: []});
-        renderIdeaList();
-      });
-      li.appendChild(form);
-      if (idea.children && idea.children.length > 0) {
-        const childUl = document.createElement('ul');
-        childUl.style.paddingLeft = '0.7em';
-        idea.children.forEach(child => {
-          childUl.appendChild(renderIdeaNode(child, level+1));
-        });
-        li.appendChild(childUl);
+      function uid() {
+        return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
       }
-      return li;
-    }
-    for (const idea of ideas) {
-      ul.appendChild(renderIdeaNode(idea, 0));
-    }
-  }
 
-  const rootForm = document.getElementById('root-idea-form');
-  const rootTextarea = document.getElementById('user-text');
-  rootTextarea.addEventListener('keydown', function(e) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      rootForm.requestSubmit();
-    }
-  });
-  rootForm.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const ideaText = rootTextarea.value.trim();
-    if (!ideaText) return;
-    ideas.push({ id: ideaId++, text: ideaText, children: [] });
-    rootTextarea.value = '';
-    renderIdeaList();
-  });
+      function findIdea(id, list) {
+        list = list || roots;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id === id) return list[i];
+          var found = findIdea(id, list[i].children);
+          if (found) return found;
+        }
+        return null;
+      }
 
-  renderIdeaList();
+      function countDescendants(node) {
+        var n = 0;
+        node.children.forEach(function (c) { n += 1 + countDescendants(c); });
+        return n;
+      }
 
-  // ---- amCharts 5 Collapsible Force-Directed Tree ----
-  let amRoot;
-  function renderAmChartsTree() {
-    if (amRoot) {
-      amRoot.dispose();  
-    }
-    const data = {
-      name: "Flavor Wheel",
-      children: [
-        { name: "Floral", children: [ { name: "Black Tea", value: 1 }, { name: "Chamomile", value: 1 } ] },
-        { name: "Fruity", children: [ { name: "Berry", value: 1 }, { name: "Dried Fruit", value: 1 }, { name: "Citrus Fruit", value: 1 }, { name: "Other Fruit", value: 1 } ] },
-        { name: "Sour/Fermented", children: [ { name: "Sour", value: 1 }, { name: "Alcohol", value: 1 }, { name: "Fermented", value: 1 } ] },
-        { name: "Green/Vegetative", children: [ { name: "Olive Oil", value: 1 }, { name: "Raw", value: 1 }, { name: "Peapod", value: 1 } ] },
-        { name: "Roasted", children: [ { name: "Pipe Tobacco", value: 1 }, { name: "Brown Spice", value: 1 } ] },
-        { name: "Spices", children: [ { name: "Pepper", value: 1 }, { name: "Pungent", value: 1 } ] },
-        { name: "Nutty/Cocoa", children: [ { name: "Nutty", value: 1 }, { name: "Cocoa", value: 1 } ] },
-        { name: "Sweet", children: [ { name: "Brown Sugar", value: 1 }, { name: "Vanilla", value: 1 } ] }
-      ]
-    };
-    amRoot = am5.Root.new("chartdiv");
-    amRoot.setThemes([
-      am5.Theme.new(amRoot)
-    ]);
-    let series = amRoot.container.children.push(
-      am5hierarchy.ForceDirected.new(amRoot, {
-        singleBranchOnly: false,
-        downDepth: 1,
-        initialDepth: 1,
-        valueField: "value",
-        categoryField: "name",
-        childDataField: "children",
-        minRadius: 22,
-        maxRadius: 45,
-        manyBodyStrength: -15,
-        nodePadding: 12,
-        centerStrength: 0.7,
-        linkWithStrength: 0.85,
-        draggable: true
-      })
-    );
-    series.data.setAll([data]);
-    series.nodes.template.adapters.add("fill", function(fill, target) {
-      let depth = target.dataItem.get("depth");
-      const palette = [0x5677fc, 0x34c759, 0xff9500, 0xff2d55, 0x6f42c1, 0xffc107, 0x20bfa9, 0xff4081];
-      let hex = palette[depth % palette.length] || 0xcccccc;
-      return amRoot.interfaceColors.get("alternative").lighten(am5.color(hex), 0.5);
-    });
-    series.nodes.template.setAll({
-      toggleKey: "active",
-      cursorOverStyle: "pointer",
-      tooltipText: "{category}"
-    });
-    series.labels.template.setAll({
-      fontSize: 14,
-      text: "{category}"
-    });
-    series.appear(1000, 100);
-  }
-  renderAmChartsTree();
-});
-// --- end amCharts and app logic ---
-</script>
+      // Removes an idea (and everything nested under it, implicitly) from wherever
+      // it lives in the tree.
+      function removeIdea(id, list) {
+        list = list || roots;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id === id) { list.splice(i, 1); return true; }
+          if (removeIdea(id, list[i].children)) return true;
+        }
+        return false;
+      }
 
+      // Filled in below, once commit()/openModal() exist. The forest module calls
+      // these by reference at tap time, so it doesn't need to know about them yet.
+      var interactions = {};
+
+      /* ---------- tap detection ---------- */
+      // Distinguishes a tap (and a long-press) from the start of a drag or pan:
+      // both only fire if the pointer stays within a few pixels of where it went
+      // down. A tap also needs to release quickly; a long-press needs to keep
+      // holding for a bit instead. Either is cancelled the moment the pointer
+      // moves past the threshold, at which point d3's own drag (on nodes) or
+      // zoom (for panning) takes over as normal -- this runs alongside those,
+      // not in place of them, and works the same for mouse, pen and touch.
+      var tapState = new Map();
+      var TAP_PX = 6, TAP_MS = 500, LONG_PRESS_MS = 550;
+      function addPress(selection, handlers) {
+        selection
+          .on("pointerdown.tap", function (e) {
+            // For a touch pointer specifically, this also suppresses the
+            // browser's own "compatibility" mouse events (mousedown/mouseup/
+            // click) that would otherwise follow shortly after -- without it,
+            // that trailing synthetic click can land on whatever the tap just
+            // opened (e.g. the modal backdrop) and immediately close it again.
+            // Scoped to touch only: calling this for mouse/pen pointers stops
+            // d3's own zoom-pan and node-drag gestures from starting.
+            if (e.pointerType === "touch") e.preventDefault();
+            var el = this;
+            var datum = d3.select(el).datum();
+            var s = { x: e.clientX, y: e.clientY, t: Date.now(), moved: false, fired: false, el: el, timer: null };
+            if (handlers.onLongPress) {
+              el.classList.add("is-pressing");
+              s.timer = setTimeout(function () {
+                s.fired = true;
+                el.classList.remove("is-pressing");
+                handlers.onLongPress.call(el, e, datum);
+              }, LONG_PRESS_MS);
+            }
+            tapState.set(e.pointerId, s);
+          })
+          .on("pointermove.tap", function (e) {
+            var s = tapState.get(e.pointerId);
+            if (!s || s.moved) return;
+            if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > TAP_PX) {
+              s.moved = true;
+              if (s.timer) clearTimeout(s.timer);
+              s.el.classList.remove("is-pressing");
+            }
+          })
+          .on("pointerup.tap", function (e, d) {
+            var s = tapState.get(e.pointerId);
+            tapState.delete(e.pointerId);
+            if (!s) return;
+            if (s.timer) clearTimeout(s.timer);
+            s.el.classList.remove("is-pressing");
+            if (s.fired) return; // the long-press already handled this
+            if (!s.moved && s.el === this && Date.now() - s.t < TAP_MS && handlers.onTap) {
+              handlers.onTap.call(this, e, d);
+            }
+          })
+          .on("pointercancel.tap", function (e) {
+            var s = tapState.get(e.pointerId);
+            if (s) {
+              if (s.timer) clearTimeout(s.timer);
+              s.el.classList.remove("is-pressing");
+            }
+            tapState.delete(e.pointerId);
+          });
+      }
+
+      /* ---------- forest chart (force-directed) ---------- */
+      // If d3 fails to load, the rest of the page still runs but the canvas stays empty.
+      var forest = (function () {
+        var d3 = window.d3;
+        if (!d3) return { update: function () {}, fit: function () {} };
+
+        // Layout units: horizontal room per node, vertical distance between levels, top margin.
+        var X_GAP = 60, Y_GAP = 80, TOP = 50;
+
+        var pane = document.getElementById("forest-pane");
+        var tip = document.getElementById("tip");
+        var tipId = document.getElementById("tip-id");
+        var tipText = document.getElementById("tip-text");
+        var tipStatus = document.getElementById("tip-status");
+        var reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+        var width = pane.clientWidth || 400;
+        var height = pane.clientHeight || 400;
+        var byId = {};
+        var lastTree = [];
+        var lastStatus = {};
+        var bounds = null;      // extent of the laid-out forest, used to fit it in view
+        var userMoved = false;  // once you pan or zoom yourself, auto-fit stops
+
+        var svg = d3.select("#forest");
+        var bg = svg.append("rect").attr("class", "bg").attr("width", "100%").attr("height", "100%");
+        var viewport = svg.append("g");
+        var linkLayer = viewport.append("g");
+        var nodeLayer = viewport.append("g");
+        var linkSel = linkLayer.selectAll("path");
+        var nodeSel = nodeLayer.selectAll("g");
+
+        // Tapping empty space (the background rect, not a node or link) opens the
+        // "new idea" form.
+        addPress(bg, {
+          onTap: function (e) {
+            if (interactions.onBackgroundTap) interactions.onBackgroundTap(e);
+          }
+        });
+
+        function radius(d) { return d.depth === 0 ? 10 : d.depth === 1 ? 7 : 5; }
+
+        function labelFor(d) {
+          if (d.depth > 0) return d.label;
+          var flat = d.text.replace(/\s+/g, " ");
+          return d.label + "  " + (flat.length > 16 ? flat.slice(0, 16) + "…" : flat);
+        }
+
+        function draw() {
+          // Links leave a parent downward and arrive at the child from above.
+          linkSel.attr("d", function (d) {
+            var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y, my = (sy + ty) / 2;
+            return "M" + sx + "," + sy + "C" + sx + "," + my + " " + tx + "," + my + " " + tx + "," + ty;
+          });
+          nodeSel.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
+        }
+
+        // Force layout with a hierarchy built in: every node is pulled toward a row set by its
+        // depth (top-level ideas on top) and a column that keeps each subtree under its parent.
+        var sim = d3.forceSimulation()
+          .force("link", d3.forceLink().id(function (d) { return d.id; }).distance(Y_GAP).strength(0.2))
+          .force("charge", d3.forceManyBody().strength(-60))
+          .force("collide", d3.forceCollide().radius(function (d) { return radius(d) + 8; }))
+          .force("x", d3.forceX(function (d) { return d.tx; }).strength(0.25))
+          .force("y", d3.forceY(function (d) { return d.ty; }).strength(0.6))
+          .alphaDecay(0.04)
+          .on("tick", draw);
+
+        // With reduced motion the layout is computed up front instead of animating.
+        function reheat(alpha) {
+          if (reduceMotion) {
+            sim.stop();
+            sim.alpha(alpha);
+            for (var i = 0; i < 250; i++) sim.tick();
+            draw();
+          } else {
+            sim.alpha(alpha).restart();
+          }
+        }
+
+        // Pan and zoom. Until you do it yourself, the forest is kept fitted to the pane.
+        var zoom = d3.zoom()
+          .scaleExtent([0.3, 4])
+          .extent(function () { return [[0, 0], [width, height]]; })
+          .on("zoom", function (e) {
+            viewport.attr("transform", e.transform);
+            if (e.sourceEvent) userMoved = true;
+          });
+        svg.call(zoom).on("dblclick.zoom", null); // avoid an accidental zoom on a quick double-tap
+
+        function fit(animate) {
+          if (!bounds || userMoved) return;
+          var contentW = bounds.maxX - bounds.minX + 160;
+          var contentH = bounds.maxY + 90;
+          var k = Math.max(0.3, Math.min(1.6, width / contentW, height / contentH));
+          var t = d3.zoomIdentity.translate(width / 2 * (1 - k), 0).scale(k);
+          if (animate && !reduceMotion) svg.transition().duration(500).call(zoom.transform, t);
+          else svg.call(zoom.transform, t);
+        }
+
+        function resize() {
+          width = pane.clientWidth || width;
+          height = pane.clientHeight || height;
+          update(lastTree, lastStatus);
+        }
+        if (window.ResizeObserver) new ResizeObserver(resize).observe(pane);
+        else window.addEventListener("resize", resize);
+
+        var drag = d3.drag()
+          .on("start", function (e, d) {
+            if (!e.active) sim.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on("drag", function (e, d) { d.fx = e.x; d.fy = e.y; })
+          .on("end", function (e, d) {
+            // Let go and the node springs back to its place in the hierarchy.
+            if (!e.active) sim.alphaTarget(0);
+            d.fx = null; d.fy = null;
+          });
+
+        /* tooltip */
+        function placeTip(cx, cy) {
+          var r = pane.getBoundingClientRect();
+          var w = tip.offsetWidth, h = tip.offsetHeight;
+          var x = cx - r.left + 14, y = cy - r.top + 14;
+          if (x + w > r.width - 8) x = Math.max(8, cx - r.left - w - 14);
+          if (y + h > r.height - 8) y = Math.max(8, cy - r.top - h - 14);
+          tip.style.left = x + "px";
+          tip.style.top = y + "px";
+        }
+        function showTip(d) {
+          tipId.textContent = d.label;
+          tipText.textContent = d.text;
+          tipStatus.textContent = d.adoptable ? "Rationally adoptable" : "Not rationally adoptable";
+          tip.hidden = false;
+        }
+        function hideTip() { tip.hidden = true; }
+
+        // Redraws the chart from the idea tree. Nodes are matched by idea id, so
+        // surviving nodes keep their positions when others are added or deleted.
+        function update(tree, status) {
+          lastTree = tree;
+          lastStatus = status || {};
+          var nodes = [], links = [], next = {};
+
+          function jitter(spread) { return (Math.random() - 0.5) * spread; }
+
+          function walk(idea, depth, parentId, label) {
+            var id = idea.id;
+            var node = byId[id] || { id: id, fresh: true };
+            node.text = idea.text;
+            node.depth = depth;
+            node.parentId = parentId;
+            node.label = label; // the number shown in the label, e.g. "1.2"
+            node.adoptable = !!lastStatus[id];
+            next[id] = node;
+            nodes.push(node);
+            if (parentId) links.push({ source: parentId, target: id });
+            idea.children.forEach(function (c, i) { walk(c, depth + 1, id, label + "." + (i + 1)); });
+          }
+          tree.forEach(function (idea, i) { walk(idea, 0, null, String(i + 1)); });
+          byId = next;
+
+          bounds = null;
+          if (nodes.length) {
+            // Tidy-tree pass over all the trees side by side: gives every node a target column,
+            // with siblings ordered left to right by when they were submitted.
+            var toH = function (idea) { return { id: idea.id, children: idea.children.map(toH) }; };
+            var h = d3.hierarchy({ id: "", children: tree.map(toH) });
+            d3.tree()
+              .nodeSize([X_GAP, Y_GAP])
+              .separation(function (a, b) {
+                if (a.depth === 1) return 2.2;              // room between separate trees
+                return a.parent === b.parent ? 1 : 1.5;
+              })(h);
+
+            var minX = Infinity, maxX = -Infinity, maxDepth = 0;
+            h.each(function (n) {
+              if (n.depth === 0) return;
+              next[n.data.id].lx = n.x;
+              if (n.x < minX) minX = n.x;
+              if (n.x > maxX) maxX = n.x;
+              if (n.depth - 1 > maxDepth) maxDepth = n.depth - 1;
+            });
+            var cx = (minX + maxX) / 2;
+            nodes.forEach(function (node) {
+              node.tx = width / 2 + node.lx - cx;
+              node.ty = TOP + node.depth * Y_GAP;
+            });
+            bounds = {
+              minX: width / 2 + minX - cx,
+              maxX: width / 2 + maxX - cx,
+              maxY: TOP + maxDepth * Y_GAP
+            };
+
+            // New nodes start beside their parent so the tree visibly grows out of it.
+            nodes.forEach(function (node) {
+              if (!node.fresh) return;
+              var p = node.parentId ? next[node.parentId] : null;
+              node.x = (p ? p.x : node.tx) + jitter(p ? 16 : 40);
+              node.y = (p ? p.y : node.ty - 40) + jitter(p ? 16 : 10);
+              delete node.fresh;
+            });
+          }
+
+          sim.nodes(nodes);
+          sim.force("link").links(links);
+
+          linkSel = linkLayer.selectAll("path")
+            .data(links, function (d) { return d.target.id; })
+            .join("path")
+            .attr("class", "link");
+
+          nodeSel = nodeLayer.selectAll("g.node")
+            .data(nodes, function (d) { return d.id; })
+            .join(function (enter) {
+              var g = enter.append("g")
+                .attr("class", "node")
+                .attr("tabindex", 0)
+                .attr("role", "img");
+              g.append("circle").attr("class", "ring");
+              g.append("circle").attr("class", "core");
+              g.append("text");
+              g.call(drag)
+                .on("pointerenter", function (e, d) { showTip(d); placeTip(e.clientX, e.clientY); })
+                .on("pointermove", function (e) { placeTip(e.clientX, e.clientY); })
+                .on("pointerleave", hideTip)
+                .on("focus", function (e, d) {
+                  showTip(d);
+                  var b = this.getBoundingClientRect();
+                  placeTip(b.right, b.top);
+                })
+                .on("blur", hideTip);
+              // Tapping a node opens the "criticize this idea" form; holding it
+              // down without moving opens a delete confirmation instead.
+              addPress(g, {
+                onTap: function (e, d) {
+                  if (interactions.onNodeTap) interactions.onNodeTap(e, d);
+                },
+                onLongPress: function (e, d) {
+                  if (interactions.onNodeLongPress) interactions.onNodeLongPress(e, d);
+                }
+              });
+              return g;
+            });
+          // Nodes for deleted ideas are dropped by join's default exit handling.
+
+          nodeSel
+            .classed("is-root", function (d) { return d.depth === 0; })
+            .classed("is-adoptable", function (d) { return d.adoptable; })
+            .attr("aria-label", function (d) {
+              return "Idea " + d.label + ": " + d.text + ". " +
+                (d.adoptable ? "Rationally adoptable." : "Not rationally adoptable.") +
+                " Activate to add a criticism.";
+            });
+          nodeSel.select("circle.core").attr("r", radius);
+          nodeSel.select("circle.ring").attr("r", function (d) { return radius(d) + 4; });
+          // Top-level ideas are labelled above the node, everything else beside it.
+          nodeSel.select("text")
+            .attr("text-anchor", function (d) { return d.depth === 0 ? "middle" : "start"; })
+            .attr("x", function (d) { return d.depth === 0 ? 0 : radius(d) + 5; })
+            .attr("y", function (d) { return d.depth === 0 ? -(radius(d) + 8) : 0; })
+            .attr("dy", function (d) { return d.depth === 0 ? "0" : "0.32em"; })
+            .text(labelFor);
+
+          reheat(0.7);
+          fit(true);
+        }
+
+        return {
+          update: update,
+          fit: function () { userMoved = false; fit(true); }
+        };
+      })();
+
+      /* ---------- storage ---------- */
+      // Accepts the older formats (plain strings, or objects without ids) as well as the current one.
+      function normalize(x) {
+        if (typeof x === "string") return { id: uid(), text: x, children: [] };
+        if (x && typeof x.text === "string") {
+          var kids = Array.isArray(x.children) ? x.children.map(normalize).filter(Boolean) : [];
+          return { id: (typeof x.id === "string" && x.id) ? x.id : uid(), text: x.text, children: kids };
+        }
+        return null;
+      }
+
+      function cloneTree(list) {
+        return list.map(function (n) {
+          return { id: n.id, text: n.text, children: cloneTree(n.children) };
+        });
+      }
+
+      // The full history of every add, as tree snapshots. `cursor` is whichever
+      // point in that history the page currently shows.
+      var history = [];
+      var cursor = -1;
+
+      function loadHistory() {
+        try {
+          var saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || "null");
+          if (saved && Array.isArray(saved.history) && saved.history.length) {
+            history = saved.history.map(function (e) {
+              return {
+                snapshot: Array.isArray(e.snapshot) ? e.snapshot.map(normalize).filter(Boolean) : [],
+                type: typeof e.type === "string" ? e.type : "add",
+                summary: typeof e.summary === "string" ? e.summary : "Event",
+                time: typeof e.time === "number" ? e.time : Date.now()
+              };
+            });
+            cursor = Math.min(Math.max(0, saved.cursor | 0), history.length - 1);
+            roots = cloneTree(history[cursor].snapshot);
+            return;
+          }
+        } catch (err) {
+          /* fall through to the legacy key, or a fresh start */
+        }
+
+        // Migrate from the format used before the timeline existed, if present.
+        var seed = [];
+        try {
+          var legacy = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+          if (Array.isArray(legacy)) seed = legacy.map(normalize).filter(Boolean);
+        } catch (err) {
+          /* start empty */
+        }
+
+        roots = seed;
+        history = [{ snapshot: cloneTree(seed), type: "start", summary: "Start", time: Date.now() }];
+        cursor = 0;
+      }
+
+      function saveHistory() {
+        try {
+          localStorage.setItem(HISTORY_KEY, JSON.stringify({ history: history, cursor: cursor }));
+        } catch (err) {
+          /* storage unavailable: everything stays in memory for this visit */
+        }
+      }
+
+      // Records the current tree as a new point in history. If the timeline was
+      // rewound before this edit, everything after that point is dropped first --
+      // editing from the past starts a new branch from there, discarding the old
+      // future.
+      function recordEvent(type, summary) {
+        if (cursor < history.length - 1) history.length = cursor + 1;
+        history.push({ snapshot: cloneTree(roots), type: type, summary: summary, time: Date.now() });
+        cursor = history.length - 1;
+        saveHistory();
+        updateTimelineUI();
+      }
+
+      /* ---------- rational adoptability ---------- */
+      // A leaf is always rationally adoptable. An internal node is rationally adoptable
+      // exactly when none of its children are. Children are settled before their parent.
+      function evaluate(list, out) {
+        list.forEach(function (n) {
+          evaluate(n.children, out);
+          out[n.id] = n.children.every(function (c) { return !out[c.id]; });
+        });
+      }
+
+      var emptyHint = document.getElementById("empty-hint");
+
+      // Recomputes adoptability and redraws the chart.
+      function refresh() {
+        var status = {};
+        evaluate(roots, status);
+        forest.update(roots, status);
+        emptyHint.hidden = roots.length > 0;
+      }
+
+      // Called after every change: refresh the chart, then record this as a new
+      // point in the timeline (which also persists it).
+      function commit(type, summary) {
+        refresh();
+        recordEvent(type, summary);
+      }
+
+      // Jumps the whole page to how it looked at a given point in the timeline.
+      function restoreTo(index) {
+        if (index < 0 || index >= history.length) return;
+        cursor = index;
+        roots = cloneTree(history[index].snapshot);
+        refresh();
+        saveHistory();
+        updateTimelineUI();
+      }
+
+      /* ---------- timeline (history scrubber) ---------- */
+      var timelineLabel = document.getElementById("timeline-label");
+      var timelineCount = document.getElementById("timeline-count");
+      var timelineSlider = document.getElementById("timeline-slider");
+      var timelineTicks = document.getElementById("timeline-ticks");
+
+      function formatTime(t) {
+        try {
+          return new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        } catch (err) {
+          return "";
+        }
+      }
+
+      function updateTimelineUI() {
+        var n = history.length;
+        timelineSlider.max = String(Math.max(0, n - 1));
+        timelineSlider.value = String(cursor);
+        timelineSlider.disabled = n <= 1;
+        timelineSlider.setAttribute("aria-valuetext", history[cursor].summary);
+        timelineCount.textContent = (cursor + 1) + " / " + n;
+        timelineLabel.textContent = history[cursor].summary;
+
+        timelineTicks.innerHTML = "";
+        history.forEach(function (entry, i) {
+          var tick = document.createElement("button");
+          tick.type = "button";
+          tick.className = "timeline-tick" + (i === cursor ? " is-active" : "");
+          tick.style.left = (n <= 1 ? 0 : (i / (n - 1)) * 100) + "%";
+          tick.title = entry.summary + " — " + formatTime(entry.time);
+          tick.setAttribute("aria-label", entry.summary + ", " + formatTime(entry.time));
+          tick.addEventListener("click", function () {
+            if (i !== cursor) restoreTo(i);
+          });
+          timelineTicks.appendChild(tick);
+        });
+      }
+
+      timelineSlider.addEventListener("input", function () {
+        var idx = parseInt(timelineSlider.value, 10);
+        if (!Number.isNaN(idx) && idx !== cursor) restoreTo(idx);
+      });
+
+      /* ---------- modal ---------- */
+      // Shared by both "new idea" and "criticize idea" -- only the title,
+      // placeholder, button label and submit handler change.
+      //
+      // Like the rest of the page, this never triggers a *native* form
+      // submission: some hosting contexts render the page inside a sandboxed
+      // iframe without "allow-forms", where a real submit is blocked by the
+      // browser before any JS runs. Both buttons are type="button" with their
+      // own click handlers instead.
+      var modalEl = document.querySelector(".modal");
+      var modalBackdrop = document.getElementById("modal-backdrop");
+      var modalTitle = document.getElementById("modal-title");
+      var modalTextarea = document.getElementById("modal-textarea");
+      var modalQuote = document.getElementById("modal-quote");
+      var modalMessage = document.getElementById("modal-message");
+      var modalForm = document.getElementById("modal-form");
+      var modalSubmitBtn = document.getElementById("modal-submit");
+      var modalCancelBtn = document.getElementById("modal-cancel");
+      var modalMode = "form"; // "form" (textarea + onSubmit(text)) or "confirm" (message + onSubmit())
+      var modalOnSubmit = null;
+      var modalOpener = null;
+      var modalIgnoreClicksUntil = 0;
+
+      // opts: title, buttonText, onSubmit, and either
+      //   { placeholder, quote }               -- a text-entry modal, optionally
+      //                                            quoting the idea it's about, or
+      //   { mode: "confirm", message, danger } -- a yes/no confirmation
+      function openModal(opts) {
+        modalMode = opts.mode === "confirm" ? "confirm" : "form";
+        modalTitle.textContent = opts.title;
+        modalSubmitBtn.textContent = opts.buttonText;
+        modalSubmitBtn.classList.toggle("modal-btn--primary", !opts.danger);
+        modalSubmitBtn.classList.toggle("modal-btn--danger", !!opts.danger);
+        modalOnSubmit = opts.onSubmit;
+        modalOpener = document.activeElement;
+
+        if (opts.quote) {
+          modalQuote.textContent = opts.quote;
+          modalQuote.hidden = false;
+        } else {
+          modalQuote.hidden = true;
+        }
+
+        if (modalMode === "confirm") {
+          modalTextarea.hidden = true;
+          modalMessage.hidden = false;
+          modalMessage.textContent = opts.message || "";
+        } else {
+          modalTextarea.hidden = false;
+          modalMessage.hidden = true;
+          modalTextarea.value = "";
+          modalTextarea.placeholder = opts.placeholder || "";
+          modalTextarea.setAttribute("aria-label", opts.title);
+        }
+
+        modalBackdrop.hidden = false;
+        // addPress() already suppresses the touch "ghost click" that this guard
+        // was originally written for (see its pointerdown handler); this is
+        // just a small safety margin in case some other path opens the modal.
+        modalIgnoreClicksUntil = Date.now() + 50;
+        // Default focus goes to Cancel for a destructive confirmation, so a
+        // stray extra tap doesn't delete anything.
+        (modalMode === "confirm" ? modalCancelBtn : modalTextarea).focus();
+      }
+
+      function closeModal() {
+        if (modalBackdrop.hidden) return;
+        modalBackdrop.hidden = true;
+        modalOnSubmit = null;
+        var opener = modalOpener;
+        modalOpener = null;
+        if (opener && typeof opener.focus === "function" && document.contains(opener)) opener.focus();
+      }
+
+      function submitModal() {
+        if (modalMode === "confirm") {
+          var confirmFn = modalOnSubmit;
+          closeModal();
+          if (confirmFn) confirmFn();
+          return;
+        }
+        var text = modalTextarea.value.trim();
+        if (!text) { modalTextarea.focus(); return; }
+        var fn = modalOnSubmit;
+        closeModal();
+        if (fn) fn(text);
+      }
+
+      modalSubmitBtn.addEventListener("click", submitModal);
+      modalCancelBtn.addEventListener("click", closeModal);
+      modalForm.addEventListener("submit", function (e) { e.preventDefault(); }); // belt-and-braces
+      modalBackdrop.addEventListener("click", function (e) {
+        if (Date.now() < modalIgnoreClicksUntil) return;
+        if (e.target === modalBackdrop) closeModal();
+      });
+      modalTextarea.addEventListener("keydown", function (e) {
+        if (e.isComposing) return;
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitModal(); }
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape" || modalBackdrop.hidden) return;
+        e.stopPropagation();
+        closeModal();
+      });
+      // A minimal focus trap: Tab from the last control wraps to the first, and back.
+      modalEl.addEventListener("keydown", function (e) {
+        if (e.key !== "Tab") return;
+        var focusables = modalEl.querySelectorAll("textarea:not([hidden]), button");
+        if (!focusables.length) return;
+        var first = focusables[0], last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      });
+
+      /* ---------- what a tap on the canvas does ---------- */
+      interactions.onBackgroundTap = function () {
+        openModal({
+          title: "New idea",
+          placeholder: "What's the idea?",
+          buttonText: "Add",
+          onSubmit: function (text) {
+            var idea = { id: uid(), text: text, children: [] };
+            roots.push(idea);
+            commit("add", "Added idea " + String(roots.length));
+          }
+        });
+      };
+
+      interactions.onNodeTap = function (e, d) {
+        var target = findIdea(d.id);
+        if (!target) return;
+        openModal({
+          title: "Criticize idea " + d.label,
+          quote: target.text,
+          placeholder: "Criticize this idea",
+          buttonText: "Criticize",
+          onSubmit: function (text) {
+            var child = { id: uid(), text: text, children: [] };
+            target.children.push(child);
+            var childLabel = d.label + "." + target.children.length;
+            commit("add", "Criticized idea " + d.label + " (added " + childLabel + ")");
+          }
+        });
+      };
+
+      interactions.onNodeLongPress = function (e, d) {
+        var target = findIdea(d.id);
+        if (!target) return;
+        var n = countDescendants(target);
+        var message = "Delete idea " + d.label +
+          (n > 0 ? " and its " + n + (n === 1 ? " criticism" : " criticisms") : "") + "?";
+        openModal({
+          mode: "confirm",
+          title: "Delete idea " + d.label,
+          message: message,
+          buttonText: "Delete",
+          danger: true,
+          onSubmit: function () {
+            removeIdea(d.id);
+            var summary = "Deleted idea " + d.label +
+              (n > 0 ? " (+" + n + (n === 1 ? " criticism)" : " criticisms)") : "");
+            commit("delete", summary);
+          }
+        });
+      };
+
+      document.getElementById("fit-btn").addEventListener("click", function () { forest.fit(); });
+
+      document.getElementById("reset-btn").addEventListener("click", function () {
+        openModal({
+          mode: "confirm",
+          title: "Reset everything",
+          message: "Delete all ideas and clear the history? This can't be undone.",
+          buttonText: "Reset",
+          danger: true,
+          onSubmit: function () {
+            roots = [];
+            history = [{ snapshot: [], type: "start", summary: "Start", time: Date.now() }];
+            cursor = 0;
+            try {
+              localStorage.removeItem(HISTORY_KEY);
+              localStorage.removeItem(STORAGE_KEY);
+            } catch (err) {
+              /* storage unavailable: in-memory state is still reset */
+            }
+            refresh();
+            updateTimelineUI();
+          }
+        });
+      });
+
+      loadHistory();
+      refresh();
+      updateTimelineUI();
+    })();
+  </script>
 </body>
 </html>
