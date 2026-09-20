@@ -138,7 +138,19 @@
     stroke-width: 2px;
   }
 
+  /* A solid disc reads as slightly smaller than a same-radius outline circle
+     (a common optical effect), so nudge it up a touch to compensate. The
+     border also matches the fill here (rather than the background), so
+     there's no dark seam between the disc and its glow. */
+  .forest .node.is-adoptable circle.core {
+    stroke: var(--node-crit);
+    transform: scale(1);
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
   .forest .node.is-root circle.core { fill: var(--node-root); }
+  .forest .node.is-root.is-adoptable circle.core { stroke: var(--node-root); }
 
   .forest .node:not(.is-adoptable) circle.core {
     fill: var(--right);
@@ -148,7 +160,9 @@
   .forest .node.is-root:not(.is-adoptable) circle.core { stroke: var(--node-root); }
 
   .forest .node:hover circle.core,
-  .forest .node:focus-visible circle.core {
+  .forest .node:focus-visible circle.core,
+  .forest .node.is-root:hover circle.core,
+  .forest .node.is-root:focus-visible circle.core {
     stroke: var(--label);
     stroke-width: 2.5px;
   }
@@ -284,8 +298,15 @@
 
   .legend li { display: flex; align-items: center; gap: 0.5rem; }
   .legend svg { flex: none; }
-  .legend .key-on { fill: var(--node-crit); stroke: var(--right); stroke-width: 2px; }
-  .legend .key-off { fill: var(--right); stroke: var(--node-crit); stroke-width: 2px; }
+  .legend .key-on {
+    fill: var(--label);
+    stroke: var(--right);
+    stroke-width: 2px;
+    transform: scale(1);
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .legend .key-off { fill: var(--right); stroke: var(--label); stroke-width: 2px; }
 
   .legend-hint {
     margin-top: 0.15rem;
