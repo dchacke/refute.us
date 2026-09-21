@@ -356,8 +356,6 @@
     text-align: center;
   }
 
-  .report-banner[hidden] { display: none; }
-
   /* ---------- timeline (history scrubber) ---------- */
   .timeline {
     flex: none;
@@ -675,7 +673,7 @@
 </head>
 <body>
   <div class="app">
-    <div class="report-banner" id="report-banner" hidden></div>
+    <div class="report-banner" id="report-banner"></div>
     <main class="split">
       <section class="canvas" id="forest-pane" aria-label="Idea forest">
         <svg class="forest" id="forest" role="group" aria-label="Forest of ideas and their criticisms"></svg>
@@ -1441,15 +1439,17 @@
       }
 
       // A one-line report of the state of the discussion right now: how many
-      // of the top-level ideas currently survive their criticisms. Hidden
-      // until there's at least one idea, same as the empty-state hint.
+      // of the top-level ideas currently survive their criticisms. Always
+      // shown (never hidden) so the layout below it never jumps around --
+      // at zero ideas it just says so, rather than disappearing.
       var reportBanner = document.getElementById("report-banner");
       function updateReportBanner(status) {
-        if (!roots.length) { reportBanner.hidden = true; return; }
         var total = roots.length;
         var adoptable = roots.filter(function (r) { return status[r.id]; }).length;
         var text;
-        if (adoptable === total) {
+        if (total === 0) {
+          text = "No ideas yet.";
+        } else if (adoptable === total) {
           text = total === 1
             ? "The idea is rationally adoptable."
             : "All " + total + " ideas are rationally adoptable.";
@@ -1461,7 +1461,6 @@
           text = adoptable + " of " + total + " ideas " + (adoptable === 1 ? "is" : "are") + " rationally adoptable.";
         }
         reportBanner.textContent = text;
-        reportBanner.hidden = false;
       }
 
       // Recomputes adoptability and redraws the chart.
