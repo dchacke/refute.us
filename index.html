@@ -1099,19 +1099,11 @@
             next[id] = node;
             nodes.push(node);
             if (parentId) links.push({ source: parentId, target: id });
-            // A criticism's number is assigned once and kept for good (it's
-            // only ever used internally, e.g. for maxNum below), so
-            // reordering siblings doesn't reassign them.
             idea.children.forEach(function (c, i) {
-              if (typeof c.num !== "number") c.num = i + 1;
               walk(c, depth + 1, id, i);
             });
           }
-          // Each top-level idea's number is assigned once, the first time it's
-          // ever rendered, and then kept for good -- so dragging ideas to
-          // reorder them doesn't reassign it.
           tree.forEach(function (idea, i) {
-            if (typeof idea.num !== "number") idea.num = i + 1;
             walk(idea, 0, null, i);
           });
           byId = next;
@@ -1280,7 +1272,6 @@
         if (x && typeof x.text === "string") {
           var kids = Array.isArray(x.children) ? x.children.map(normalize).filter(Boolean) : [];
           var idea = { id: (typeof x.id === "string" && x.id) ? x.id : uid(), text: x.text, children: kids };
-          if (typeof x.num === "number") idea.num = x.num;
           return idea;
         }
         return null;
@@ -1288,9 +1279,7 @@
 
       function cloneTree(list) {
         return list.map(function (n) {
-          var copy = { id: n.id, text: n.text, children: cloneTree(n.children) };
-          if (typeof n.num === "number") copy.num = n.num;
-          return copy;
+          return { id: n.id, text: n.text, children: cloneTree(n.children) };
         });
       }
 
@@ -1707,8 +1696,7 @@
           placeholder: "What’s the idea?",
           buttonText: "Add",
           onSubmit: function (text) {
-            var maxNum = roots.reduce(function (m, r) { return typeof r.num === "number" && r.num > m ? r.num : m; }, 0);
-            var idea = { id: uid(), text: text, children: [], num: maxNum + 1 };
+            var idea = { id: uid(), text: text, children: [] };
             roots.push(idea);
             commit("add-idea", { text: idea.text });
           }
@@ -1724,8 +1712,7 @@
           placeholder: "Criticize this idea",
           buttonText: "Criticize",
           onSubmit: function (text) {
-            var maxNum = target.children.reduce(function (m, c) { return typeof c.num === "number" && c.num > m ? c.num : m; }, 0);
-            var child = { id: uid(), text: text, children: [], num: maxNum + 1 };
+            var child = { id: uid(), text: text, children: [] };
             target.children.push(child);
             commit("add-criticism", { text: child.text });
           }
