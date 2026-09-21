@@ -416,6 +416,13 @@
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
+    /* Without this, a touch drag that isn't perfectly horizontal is partly
+       read as a page scroll on iOS/iPadOS, fighting the slider. This hands
+       the browser's touch gesture recognition entirely to the slider itself
+       (which drags the thumb via its own native pointer handling, not
+       through page scrolling), so a diagonal finger movement no longer
+       scrolls the page. */
+    touch-action: none;
     width: 100%;
     height: 1.5rem;
     margin: 0;
