@@ -1283,6 +1283,43 @@
         });
       }
 
+      // What's saved under HISTORY_KEY is wrapped in a versioned envelope --
+      // { version, state } -- so the shape of `state` can keep changing
+      // (a rename, a new field, whatever) without ever touching how the
+      // envelope itself is read. Data saved before this system existed has
+      // no envelope at all (just the old { history, cursor } shape directly);
+      // that's treated as version 0.
+      var CURRENT_VERSION = 1;
+
+      // Each migration takes the previous version's `state` and returns the
+      // next version's `state`. Once shipped, a migration is never edited --
+      // only new ones get added on top, same as a database migration.
+      var MIGRATIONS = {
+        1: function (state) {
+          // Version 0 was unversioned: `state` here is whatever was stored
+          // directly under HISTORY_KEY before the envelope existed.
+          var history = (state && Array.isArray(state.history)) ? state.history : [];
+          var cursor = (state && typeof state.cursor === "number") ? state.cursor : 0;
+          return { history: history, cursor: cursor };
+        }
+      };
+
+      // Brings whatever was parsed from storage up to CURRENT_VERSION,
+      // running each migration in order. `raw` is the parsed JSON as-is
+      // (or null if nothing was stored).
+      function migrateStoredState(raw) {
+        var hasEnvelope = !!(raw && typeof raw.version === "number");
+        var version = hasEnvelope ? raw.version : 0;
+        var state = hasEnvelope ? raw.state : raw;
+        while (version < CURRENT_VERSION) {
+          version += 1;
+          var migrate = MIGRATIONS[version];
+          if (typeof migrate !== "function") throw new Error("Missing migration to version " + version);
+          state = migrate(state);
+        }
+        return { version: version, state: state };
+      }
+
       // The full history of every add, as tree snapshots. `cursor` is whichever
       // point in that history the page currently shows.
       var history = [];
@@ -1290,9 +1327,10 @@
 
       function loadHistory() {
         try {
-          var saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || "null");
-          if (saved && Array.isArray(saved.history) && saved.history.length) {
-            history = saved.history.map(function (e) {
+          var raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || "null");
+          var state = migrateStoredState(raw).state;
+          if (state && Array.isArray(state.history) && state.history.length) {
+            history = state.history.map(function (e) {
               return {
                 snapshot: Array.isArray(e.snapshot) ? e.snapshot.map(normalize).filter(Boolean) : [],
                 type: typeof e.type === "string" ? e.type : "add",
@@ -1307,12 +1345,15 @@
                 time: typeof e.time === "number" ? e.time : Date.now()
               };
             });
-            cursor = Math.min(Math.max(0, saved.cursor | 0), history.length - 1);
+            cursor = Math.min(Math.max(0, state.cursor | 0), history.length - 1);
             roots = cloneTree(history[cursor].snapshot);
             return;
           }
         } catch (err) {
-          /* fall through to the legacy key, or a fresh start */
+          // Either a migration failed, or the saved data was corrupt in some
+          // other way -- don't try to salvage it (that risks half-migrated
+          // state sneaking through), just say so plainly and start fresh below.
+          alert("Your saved discussion couldn't be loaded, so this page is starting fresh.");
         }
 
         // Migrate from the format used before the timeline existed, if present.
@@ -1331,7 +1372,10 @@
 
       function saveHistory() {
         try {
-          localStorage.setItem(HISTORY_KEY, JSON.stringify({ history: history, cursor: cursor }));
+          localStorage.setItem(HISTORY_KEY, JSON.stringify({
+            version: CURRENT_VERSION,
+            state: { history: history, cursor: cursor }
+          }));
         } catch (err) {
           /* storage unavailable: everything stays in memory for this visit */
         }
