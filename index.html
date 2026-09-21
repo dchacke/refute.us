@@ -1418,14 +1418,14 @@
         var text;
         if (adoptable === total) {
           text = total === 1
-            ? "The idea is currently rationally adoptable."
-            : "All " + total + " ideas are currently rationally adoptable.";
+            ? "The idea is rationally adoptable."
+            : "All " + total + " ideas are rationally adoptable.";
         } else if (adoptable === 0) {
           text = total === 1
-            ? "The idea is not currently rationally adoptable."
-            : "None of the " + total + " ideas are currently rationally adoptable.";
+            ? "The idea is not rationally adoptable."
+            : "None of the " + total + " ideas are rationally adoptable.";
         } else {
-          text = adoptable + " of " + total + " ideas are currently rationally adoptable.";
+          text = adoptable + " of " + total + " ideas " + (adoptable === 1 ? "is" : "are") + " rationally adoptable.";
         }
         reportBanner.textContent = text;
         reportBanner.hidden = false;
