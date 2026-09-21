@@ -405,6 +405,9 @@
     font-weight: 400;
     color: var(--muted);
     pointer-events: none;
+    /* Keeps digits a fixed width, so the timestamp shown here while
+       scrubbing doesn't shift horizontally as it morphs between values. */
+    font-variant-numeric: tabular-nums;
   }
 
   .timeline-hint[hidden] { display: none; }
