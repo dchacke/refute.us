@@ -673,7 +673,7 @@
 </head>
 <body>
   <div class="app">
-    <div class="report-banner" id="report-banner"></div>
+    <div class="report-banner" id="report-banner"><span id="report-banner-text"></span></div>
     <main class="split">
       <section class="canvas" id="forest-pane" aria-label="Idea forest">
         <svg class="forest" id="forest" role="group" aria-label="Forest of ideas and their criticisms"></svg>
@@ -707,7 +707,7 @@
           aria-label="History: drag to a point in time, or use the arrow keys">
         <div class="timeline-ticks" id="timeline-ticks" aria-hidden="true"></div>
       </div>
-      <span class="timeline-hint" id="timeline-hint" aria-hidden="true">Scrub to time-travel.</span>
+      <span class="timeline-hint" id="timeline-hint" aria-hidden="true"><span id="timeline-hint-text">Scrub to time-travel.</span></span>
     </footer>
   </div>
 
@@ -1443,6 +1443,7 @@
       // shown (never hidden) so the layout below it never jumps around --
       // at zero ideas it just says so, rather than disappearing.
       var reportBanner = document.getElementById("report-banner");
+      var reportBannerText = document.getElementById("report-banner-text");
       function updateReportBanner(status) {
         var total = roots.length;
         var adoptable = roots.filter(function (r) { return status[r.id]; }).length;
@@ -1460,7 +1461,7 @@
         } else {
           text = adoptable + " of " + total + " ideas " + (adoptable === 1 ? "is" : "are") + " rationally adoptable.";
         }
-        reportBanner.textContent = text;
+        setReportText(text);
       }
 
       // Recomputes adoptability and redraws the chart.
@@ -1497,6 +1498,7 @@
       var timelineSlider = document.getElementById("timeline-slider");
       var timelineTicks = document.getElementById("timeline-ticks");
       var timelineHint = document.getElementById("timeline-hint");
+      var timelineHintText = document.getElementById("timeline-hint-text");
       var timelineFooter = document.getElementById("timeline");
 
       // Time alone for today; the full date is added once it's no longer today,
@@ -1554,12 +1556,12 @@
 
       // While the knob is actively being moved, the hint text is swapped for
       // that point in time's timestamp; letting go restores the usual hint.
-      var TIMELINE_HINT_DEFAULT = timelineHint.textContent;
+      var TIMELINE_HINT_DEFAULT = timelineHintText.textContent;
 
       timelineSlider.addEventListener("input", function () {
         var idx = parseInt(timelineSlider.value, 10);
         if (!Number.isNaN(idx) && idx !== cursor) restoreTo(idx);
-        timelineHint.textContent = formatTime(history[cursor].time);
+        setTimelineText(formatTime(history[cursor].time));
       });
 
       // "change" alone isn't reliable for this: iOS Safari only fires it on
@@ -1570,12 +1572,46 @@
       // itself regardless of where the release happens -- a more reliable
       // signal that the drag is actually over.
       function revertTimelineHint() {
-        timelineHint.textContent = TIMELINE_HINT_DEFAULT;
+        setTimelineText(TIMELINE_HINT_DEFAULT);
       }
       timelineSlider.addEventListener("pointerup", revertTimelineHint);
       timelineSlider.addEventListener("pointercancel", revertTimelineHint);
       timelineSlider.addEventListener("change", revertTimelineHint);
       timelineSlider.addEventListener("blur", revertTimelineHint);
+
+      // Smooth text transitions for the report banner and the timeline hint,
+      // via Torph (https://torph.lochie.me/). Loaded on demand -- if it fails
+      // to load, setReportText/setTimelineText just fall back to plain
+      // textContent swaps, so the rest of the app doesn't depend on it.
+      // Torph attaches to the inner *-text span, not the banner/hint element
+      // itself: it forces its element to display: inline-block, which would
+      // otherwise override the banner/hint's own block layout and knock its
+      // centered text left-aligned. The outer element keeps its own CSS;
+      // only the inner span is handed to Torph.
+      // respectReducedMotion is off on purpose: these two spots are small,
+      // low-motion text swaps, not the kind of thing prefers-reduced-motion
+      // is meant to guard against.
+      var reportMorph = null, timelineMorph = null;
+      var latestReportText = reportBannerText.textContent;
+      var latestTimelineText = timelineHintText.textContent;
+
+      function setReportText(text) {
+        latestReportText = text;
+        if (reportMorph) reportMorph.update(text); else reportBannerText.textContent = text;
+      }
+      function setTimelineText(text) {
+        latestTimelineText = text;
+        if (timelineMorph) timelineMorph.update(text); else timelineHintText.textContent = text;
+      }
+
+      import("https://cdn.jsdelivr.net/npm/torph@0.1.3/+esm").then(function (mod) {
+        reportMorph = new mod.TextMorph({ element: reportBannerText, respectReducedMotion: false });
+        timelineMorph = new mod.TextMorph({ element: timelineHintText, respectReducedMotion: false });
+        reportMorph.update(latestReportText);
+        timelineMorph.update(latestTimelineText);
+      }).catch(function (err) {
+        /* Torph didn't load (offline, CDN down, etc.) -- plain text swaps still work. */
+      });
 
       /* ---------- modal ---------- */
       // Shared by both "new idea" and "criticize idea" -- only the title,
