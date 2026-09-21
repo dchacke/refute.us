@@ -1561,6 +1561,13 @@
       // that point in time's timestamp; letting go restores the usual hint.
       var TIMELINE_HINT_DEFAULT = timelineHintText.textContent;
 
+      // "input" only fires once the slider's value actually changes, so
+      // starting a drag without yet crossing into the next tick showed
+      // nothing -- "pointerdown" shows the current tick's timestamp right
+      // away, before any movement.
+      timelineSlider.addEventListener("pointerdown", function () {
+        setTimelineText(formatTime(history[cursor].time));
+      });
       timelineSlider.addEventListener("input", function () {
         var idx = parseInt(timelineSlider.value, 10);
         if (!Number.isNaN(idx) && idx !== cursor) restoreTo(idx);
