@@ -519,11 +519,13 @@
     width: 100%;
     max-width: 26rem;
     /* The backdrop's own 1.5rem padding already keeps this off the edges
-       of the viewport; capping height at 100% of that (plus scrolling)
-       means a modal with a lot of content never gets clipped or pushes
-       its buttons off-screen on a short viewport. */
+       of the viewport; capping height at 100% of that means a modal with
+       a lot of content never pushes its buttons off-screen on a short
+       viewport -- .modal-scroll below is what actually scrolls, so the
+       action buttons (outside it) stay pinned and always reachable. */
     max-height: 100%;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     padding: 1.5rem;
     background: var(--left);
     color: var(--ink);
@@ -540,7 +542,7 @@
   }
 
   .modal-title {
-    margin: 0 0 1rem;
+    margin: 0;
     font-size: 1.05rem;
     font-weight: 600;
   }
@@ -548,7 +550,29 @@
   .modal-form {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: 1rem;
+  }
+
+  /* Everything above the action buttons: scrolls on its own when a modal's
+     content is taller than the viewport, while .modal-actions (outside
+     this) stays pinned and always visible/reachable. */
+  .modal-scroll {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 1rem;
+    overflow-y: auto;
+    /* Setting overflow-y alone makes overflow-x clip too (the two can't be
+       "auto" and "visible" at once), which was cutting off the textarea's
+       focus ring on the left and bottom -- padding gives it room on the
+       sides that need it, and the matching negative margin cancels the
+       padding back out so nothing visually shifts. Top is left alone: a
+       focus ring there was never clipped (nothing sits flush against it). */
+    padding: 0 0.375rem 0.375rem 0.375rem;
+    margin: 0 -0.375rem -0.375rem -0.375rem;
   }
 
   .modal-textarea {
@@ -691,11 +715,13 @@
 
   <div class="modal-backdrop" id="modal-backdrop" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <h2 class="modal-title" id="modal-title">New idea</h2>
       <form class="modal-form" id="modal-form">
-        <div class="modal-message" id="modal-message" hidden></div>
-        <blockquote class="modal-quote" id="modal-quote" hidden></blockquote>
-        <textarea class="modal-textarea" id="modal-textarea" aria-label="New idea"></textarea>
+        <div class="modal-scroll" id="modal-scroll">
+          <h2 class="modal-title" id="modal-title">New idea</h2>
+          <div class="modal-message" id="modal-message" hidden></div>
+          <blockquote class="modal-quote" id="modal-quote" hidden></blockquote>
+          <textarea class="modal-textarea" id="modal-textarea" aria-label="New idea"></textarea>
+        </div>
         <div class="modal-actions">
           <button type="button" class="modal-btn modal-btn--ghost" id="modal-cancel">Cancel</button>
           <button type="button" class="modal-btn modal-btn--primary" id="modal-submit">Add</button>
@@ -1529,6 +1555,7 @@
       // browser before any JS runs. Both buttons are type="button" with their
       // own click handlers instead.
       var modalEl = document.querySelector(".modal");
+      var modalScroll = document.getElementById("modal-scroll");
       var modalBackdrop = document.getElementById("modal-backdrop");
       var modalTitle = document.getElementById("modal-title");
       var modalTextarea = document.getElementById("modal-textarea");
@@ -1602,10 +1629,10 @@
         // Default focus goes to Cancel/Close for anything that isn't a text
         // entry, so a stray extra tap doesn't submit or delete anything.
         (modalMode === "form" ? modalTextarea : modalCancelBtn).focus();
-        // Focusing Close can auto-scroll a long, now-scrollable modal (info
-        // mode) straight to the bottom to bring it into view -- reset back
-        // to the top so the reader sees the start of the content first.
-        modalEl.scrollTop = 0;
+        // The action buttons live outside .modal-scroll now, so focusing
+        // one doesn't auto-scroll the content -- this is just a safety net
+        // in case a modal is reopened without its scroll position resetting.
+        modalScroll.scrollTop = 0;
       }
 
       function closeModal() {
