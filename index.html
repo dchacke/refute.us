@@ -518,6 +518,12 @@
   .modal {
     width: 100%;
     max-width: 26rem;
+    /* The backdrop's own 1.5rem padding already keeps this off the edges
+       of the viewport; capping height at 100% of that (plus scrolling)
+       means a modal with a lot of content never gets clipped or pushes
+       its buttons off-screen on a short viewport. */
+    max-height: 100%;
+    overflow-y: auto;
     padding: 1.5rem;
     background: var(--left);
     color: var(--ink);
@@ -1596,6 +1602,10 @@
         // Default focus goes to Cancel/Close for anything that isn't a text
         // entry, so a stray extra tap doesn't submit or delete anything.
         (modalMode === "form" ? modalTextarea : modalCancelBtn).focus();
+        // Focusing Close can auto-scroll a long, now-scrollable modal (info
+        // mode) straight to the bottom to bring it into view -- reset back
+        // to the top so the reader sees the start of the content first.
+        modalEl.scrollTop = 0;
       }
 
       function closeModal() {
