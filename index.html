@@ -197,6 +197,17 @@
     }
   }
 
+  /* Joins two versions of the same idea: not an attack, so it's drawn as a
+     quiet dashed tie rather than a solid edge. */
+  .forest .version-link {
+    fill: none;
+    stroke: var(--label-dim);
+    stroke-width: 1.5px;
+    stroke-dasharray: 5 4;
+    opacity: 0.75;
+    pointer-events: none;
+  }
+
   @keyframes adopt-glow {
     0%, 100% { filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)); }
     50% { filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7)); }
@@ -619,6 +630,48 @@
     margin: 0 -0.375rem -0.375rem -0.375rem;
   }
 
+  .modal-checks {
+    margin: 0.9rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .modal-checks li { display: flex; }
+
+  .modal-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .modal-check input { margin: 0.2rem 0 0; flex: none; width: 1rem; height: 1rem; accent-color: var(--focus); }
+  .modal-check-note { display: block; margin-top: 0.1rem; font-size: 0.8rem; color: var(--muted); }
+  .modal-checks .modal-checks-head {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .modal-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .modal-menu .modal-btn { width: 100%; }
+
   .modal-textarea {
     width: 100%;
     min-height: 8rem;
@@ -741,7 +794,7 @@
           <li><svg width="24" height="24" viewBox="-12 -12 24 24" aria-hidden="true"><circle class="key-on" r="8"></circle></svg>Rationally adoptable.</li>
           <li><svg width="24" height="24" viewBox="-12 -12 24 24" aria-hidden="true"><circle class="key-off" r="8"></circle></svg>Not rationally adoptable.</li>
           <li class="legend-hint">Tap empty space to add an idea.</li>
-          <li class="legend-hint">Tap an idea to criticize it.</li>
+          <li class="legend-hint">Tap an idea to criticize or revise it.</li>
           <li class="legend-hint">Tap and hold an idea to delete it.</li>
           <li class="legend-hint">Drag an idea past a sibling to reorder them.</li>
         </ul>
@@ -771,6 +824,8 @@
           <div class="modal-message" id="modal-message" hidden></div>
           <blockquote class="modal-quote" id="modal-quote" hidden></blockquote>
           <textarea class="modal-textarea" id="modal-textarea" aria-label="New idea"></textarea>
+          <ul class="modal-checks" id="modal-checks" hidden></ul>
+          <div class="modal-menu" id="modal-menu" hidden></div>
         </div>
         <div class="modal-actions">
           <button type="button" class="modal-btn modal-btn--ghost" id="modal-cancel">Cancel</button>
@@ -785,7 +840,12 @@
     (function () {
       var STORAGE_KEY = "ideas";       // legacy key, read only, for migration
       var HISTORY_KEY = "ideas-history-v1";
-      var roots = []; // each idea: { id: string, text: string, children: [idea, ...] }
+      // The ideas, as a graph: each idea is { id, text, children: [idea, ...] },
+      // and an idea can appear as a child of more than one parent (the same
+      // criticism applying to two versions of an idea). Children are held by
+      // reference, so a shared one really is a single idea; the flat
+      // nodes-and-edges shape it's saved in is built by ideasToGraph below.
+      var roots = [];
       // How the current point in history's rows were arranged -- see the
       // "rows of trees" section. { manual: whether you arranged them
       // yourself, w/h: the pane size at the time }, or null. Top-level
@@ -815,31 +875,120 @@
         return flat.length > max + 1 ? flat.slice(0, max) + "…" : flat;
       }
 
+      // Every idea reachable from `list`, each one once however many parents
+      // it has, in the order they're first met.
+      function allIdeas(list) {
+        var out = [], seen = {};
+        (function visit(ideas) {
+          ideas.forEach(function (idea) {
+            if (seen[idea.id]) return;
+            seen[idea.id] = true;
+            out.push(idea);
+            visit(idea.children);
+          });
+        })(list || roots);
+        return out;
+      }
+
       function findIdea(id, list) {
-        list = list || roots;
-        for (var i = 0; i < list.length; i++) {
-          if (list[i].id === id) return list[i];
-          var found = findIdea(id, list[i].children);
-          if (found) return found;
-        }
+        var all = allIdeas(list);
+        for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
         return null;
       }
 
       function countDescendants(node) {
-        var n = 0;
-        node.children.forEach(function (c) { n += 1 + countDescendants(c); });
-        return n;
+        return allIdeas(node.children).length;
       }
 
-      // Removes an idea (and everything nested under it, implicitly) from wherever
-      // it lives in the tree.
+      // Takes an idea out of the discussion entirely: off every parent it
+      // hangs from, so a criticism shared by two versions of an idea goes
+      // from both. Anything left only underneath it goes with it, since
+      // nothing reaches it any more.
       function removeIdea(id, list) {
+        var gone = false;
         list = list || roots;
-        for (var i = 0; i < list.length; i++) {
-          if (list[i].id === id) { list.splice(i, 1); return true; }
-          if (removeIdea(id, list[i].children)) return true;
+        for (var i = list.length - 1; i >= 0; i--) {
+          if (list[i].id === id) { list.splice(i, 1); gone = true; }
         }
-        return false;
+        allIdeas(list).forEach(function (idea) {
+          for (var i = idea.children.length - 1; i >= 0; i--) {
+            if (idea.children[i].id === id) { idea.children.splice(i, 1); gone = true; }
+          }
+        });
+        return gone;
+      }
+
+      // Every idea the given one hangs from: more than one once a criticism
+      // applies to two versions of an idea.
+      function parentsOf(id, list) {
+        return allIdeas(list).filter(function (idea) {
+          return idea.children.some(function (child) { return child.id === id; });
+        });
+      }
+
+      /* ---------- saved shape ---------- */
+      // Ideas are saved flat -- every idea once, plus the parent-to-child
+      // edges between them -- because a shared idea can't be written twice
+      // as nested JSON without becoming two ideas on the way back in.
+      function ideasToGraph(list) {
+        var nodes = [], edges = [], seen = {};
+        (function visit(ideas) {
+          ideas.forEach(function (idea) {
+            if (seen[idea.id]) return;
+            seen[idea.id] = true;
+            var node = { id: idea.id, text: idea.text };
+            if (typeof idea.row === "number") node.row = idea.row;
+            if (typeof idea.versionOf === "string") node.versionOf = idea.versionOf;
+            nodes.push(node);
+            idea.children.forEach(function (child) { edges.push([idea.id, child.id]); });
+            visit(idea.children);
+          });
+        })(list);
+        return { roots: list.map(function (idea) { return idea.id; }), nodes: nodes, edges: edges };
+      }
+
+      function graphToIdeas(graph) {
+        var byId = {};
+        (graph && graph.nodes ? graph.nodes : []).forEach(function (node) {
+          var idea = { id: node.id, text: node.text, children: [] };
+          if (typeof node.row === "number") idea.row = node.row;
+          if (typeof node.versionOf === "string") idea.versionOf = node.versionOf;
+          byId[idea.id] = idea;
+        });
+        (graph && graph.edges ? graph.edges : []).forEach(function (edge) {
+          var parent = byId[edge[0]], child = byId[edge[1]];
+          if (parent && child && parent.children.indexOf(child) === -1) parent.children.push(child);
+        });
+        return (graph && graph.roots ? graph.roots : [])
+          .map(function (id) { return byId[id]; })
+          .filter(Boolean);
+      }
+
+      // A working copy that keeps sharing intact: one new idea per id, joined
+      // up the same way as the original.
+      function cloneIdeas(list) {
+        return graphToIdeas(ideasToGraph(list));
+      }
+
+      // Whatever came out of storage, as a graph we can actually rely on:
+      // ids and text present, edges pointing at ideas that exist.
+      function readGraph(raw) {
+        if (Array.isArray(raw)) return ideasToGraph(raw.map(normalize).filter(Boolean)); // nested, pre-v3
+        if (!raw || typeof raw !== "object") return { roots: [], nodes: [], edges: [] };
+        var nodes = [], byId = {};
+        (Array.isArray(raw.nodes) ? raw.nodes : []).forEach(function (node) {
+          if (!node || typeof node.id !== "string" || typeof node.text !== "string" || byId[node.id]) return;
+          var kept = { id: node.id, text: node.text };
+          if (typeof node.row === "number") kept.row = node.row;
+          if (typeof node.versionOf === "string") kept.versionOf = node.versionOf;
+          byId[node.id] = kept;
+          nodes.push(kept);
+        });
+        var edges = (Array.isArray(raw.edges) ? raw.edges : []).filter(function (edge) {
+          return Array.isArray(edge) && byId[edge[0]] && byId[edge[1]] && edge[0] !== edge[1];
+        }).map(function (edge) { return [edge[0], edge[1]]; });
+        var roots = (Array.isArray(raw.roots) ? raw.roots : []).filter(function (id) { return byId[id]; });
+        return { roots: roots, nodes: nodes, edges: edges };
       }
 
       // Filled in below, once commit()/openModal() exist. The forest module calls
@@ -944,9 +1093,11 @@
         var viewport = svg.append("g");
         var linkLayer = viewport.append("g");
         var linkFlowLayer = viewport.append("g"); // the "flowing toward parent" overlay, above the edges
+        var versionLayer = viewport.append("g");  // ties between versions of the same idea
         var nodeLayer = viewport.append("g");
         var linkSel = linkLayer.selectAll("path");
         var linkFlowSel = linkFlowLayer.selectAll("path");
+        var versionSel = versionLayer.selectAll("path");
         var nodeSel = nodeLayer.selectAll("g");
 
         // Tapping empty space (the background rect, not a node or link) opens the
@@ -958,6 +1109,91 @@
         });
 
         function radius(d) { return 10; }
+
+        /* ---------- laying out one tree ---------- */
+        // Ideas that are versions of each other (see idea.versionOf) sit side
+        // by side as one group, and a criticism that applies to several of
+        // them hangs once, between the versions it attacks. Everything below
+        // such a group is an ordinary tree again, so the same routine handles
+        // both -- a group of one is just a node.
+        var LEAF_HALF = X_GAP / 2;     // room a childless idea takes to its own side
+        var BLOCK_GAP = 10;            // extra room between two neighbouring subtrees
+        var MEMBER_GAP = 200;          // least room between two versions of one idea, titles included
+
+        // Splits siblings into version groups, keeping the list's own order.
+        function groupSiblings(list) {
+          var index = {}, groupOf = {}, groups = [];
+          list.forEach(function (idea, i) { index[idea.id] = i; });
+          list.forEach(function (idea) {
+            var base = idea, seen = {};
+            while (base.versionOf && index[base.versionOf] !== undefined && !seen[base.id]) {
+              seen[base.id] = true;
+              base = list[index[base.versionOf]];
+            }
+            var group = groupOf[base.id];
+            if (!group) { group = { members: [] }; groupOf[base.id] = group; groups.push(group); }
+            if (group.members.indexOf(idea) === -1) group.members.push(idea);
+          });
+          groups.forEach(function (group) {
+            group.members.sort(function (a, b) { return index[a.id] - index[b.id]; });
+          });
+          return groups;
+        }
+
+        // Lays out a version group and everything under it, in its own
+        // coordinates: every idea gets an x, and each version sits over the
+        // middle of the criticisms it owns -- so ones shared by two versions
+        // end up between them, and private ones out on their own side.
+        function buildBlock(members) {
+          var union = [], seen = {};
+          members.forEach(function (member) {
+            member.children.forEach(function (child) {
+              if (!seen[child.id]) { seen[child.id] = true; union.push(child); }
+            });
+          });
+          var childGroups = groupSiblings(union);
+          childGroups.forEach(function (group) {
+            group.owners = [];
+            members.forEach(function (member, i) {
+              var owns = group.members.some(function (child) { return member.children.indexOf(child) !== -1; });
+              if (owns) group.owners.push(i);
+            });
+            if (!group.owners.length) group.owners.push(0);
+            group.anchor = group.owners.reduce(function (a, b) { return a + b; }, 0) / group.owners.length;
+          });
+          // Shared criticisms belong between the versions that share them.
+          childGroups.sort(function (a, b) { return a.anchor - b.anchor; });
+
+          var pos = {}, cursor = 0;
+          childGroups.forEach(function (group, i) {
+            var block = buildBlock(group.members);
+            var shift = (i === 0 ? 0 : cursor + BLOCK_GAP) - block.min;
+            Object.keys(block.pos).forEach(function (id) { pos[id] = block.pos[id] + shift; });
+            group.center = block.memberXs.reduce(function (a, b) { return a + b; }, 0) / block.memberXs.length + shift;
+            cursor = block.max + shift;
+          });
+
+          var memberXs = members.map(function (member, i) {
+            var owned = childGroups.filter(function (group) { return group.owners.indexOf(i) !== -1; });
+            if (!owned.length) return null;
+            return owned.reduce(function (a, group) { return a + group.center; }, 0) / owned.length;
+          });
+          for (var i = 0; i < memberXs.length; i++) {
+            if (memberXs[i] === null) {
+              memberXs[i] = i === 0 ? (childGroups.length ? childGroups[0].center : 0) : memberXs[i - 1] + MEMBER_GAP;
+            }
+            if (i > 0 && memberXs[i] < memberXs[i - 1] + MEMBER_GAP) memberXs[i] = memberXs[i - 1] + MEMBER_GAP;
+          }
+          members.forEach(function (member, i) { pos[member.id] = memberXs[i]; });
+
+          var xs = Object.keys(pos).map(function (id) { return pos[id]; });
+          return {
+            pos: pos,
+            memberXs: memberXs,
+            min: Math.min.apply(null, xs) - LEAF_HALF,
+            max: Math.max.apply(null, xs) + LEAF_HALF
+          };
+        }
 
         /* ---------- rows of trees ---------- */
         // Trees are laid out like words in a paragraph: in their top-level
@@ -973,6 +1209,7 @@
         var rowOf = {};               // tree (root idea id) -> row shown in the last layout
         var shownManual = false;      // whether the rows shown are ones you arranged yourself
         var layoutRows = [];          // [{ ids, top, bottom }] from the last layout, for drops
+        var groupMembers = {};        // first version's id -> every version's id, in order
 
         // Width of blocks[from..to), including the gaps between them.
         function rowWidth(blocks, from, to) {
@@ -1101,7 +1338,15 @@
           var row = rowsIds[target];
           var at = row.filter(function (other) { return byId[other] && byId[other].tx < x; }).length;
           row.splice(at, 0, id);
-          return rowsIds.filter(function (ids) { return ids.length; });
+          // Rows are kept as one entry per version group; from here on the
+          // whole group travels together.
+          return rowsIds.filter(function (ids) { return ids.length; }).map(function (ids) {
+            var full = [];
+            ids.forEach(function (memberId) {
+              (groupMembers[memberId] || [memberId]).forEach(function (id2) { full.push(id2); });
+            });
+            return full;
+          });
         }
 
         // Where a new top-level idea should go, given where you tapped (in
@@ -1242,9 +1487,19 @@
           });
         }
 
+        // Two versions sit side by side on the same row, so their tie is drawn
+        // as a shallow arc dipping below the line between them, clear of the
+        // titles above and of the criticisms hanging underneath.
+        function versionPath(d) {
+          var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
+          var mx = (sx + tx) / 2, my = (sy + ty) / 2 + Math.min(26, Math.abs(tx - sx) / 6 + 10);
+          return "M" + sx + "," + sy + "Q" + mx + "," + my + " " + tx + "," + ty;
+        }
+
         function draw() {
           // Links leave a parent downward and arrive at the child from above.
           linkSel.attr("d", linkPath);
+          versionSel.attr("d", versionPath);
           updateFlowShapes();
           nodeSel.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
         }
@@ -1442,13 +1697,25 @@
 
           function jitter(spread) { return (Math.random() - 0.5) * spread; }
 
+          // An idea shared by two parents is one node with two edges into
+          // it, so it's only walked the first time it's met; `parentIds`
+          // keeps the rest.
           function walk(idea, depth, parentId, rank) {
             var id = idea.id;
-            var node = byId[id] || { id: id, fresh: true };
+            var node = next[id];
+            if (node) {
+              node.parentIds.push(parentId);
+              if (depth > node.depth) node.depth = depth;
+              links.push({ source: parentId, target: id });
+              return;
+            }
+            node = byId[id] || { id: id, fresh: true };
             var prevRank = node.rank;
             node.text = idea.text;
             node.depth = depth;
-            node.parentId = parentId;
+            node.parentId = parentId;          // the first parent: what it's laid out under
+            node.parentIds = parentId ? [parentId] : [];
+            node.versionOf = idea.versionOf || null;
             node.adoptable = !!lastStatus[id];
             node.rank = rank; // this idea's current position among its siblings
             // True when this node existed before and has changed which of its
@@ -1474,6 +1741,7 @@
           bounds = null;
           layoutRows = [];
           rowOf = {};
+          groupMembers = {};
           if (nodes.length) {
             // Every other criticism on a row is nudged down a little, so its
             // text preview lands in the gap between its neighbours' previews
@@ -1481,47 +1749,44 @@
             // horizontal room.
             var ALT_Y = 16;
 
-            // Tidy-tree pass per tree, so each tree can be placed as one block,
-            // with siblings ordered left to right by when they were submitted.
-            var toH = function (idea) { return { id: idea.id, children: idea.children.map(toH) }; };
-            var blocks = tree.map(function (idea) {
-              var h = d3.hierarchy(toH(idea));
-              d3.tree()
-                .nodeSize([X_GAP, Y_GAP])
-                .separation(function (a, b) {
-                  // A slight bit of extra room between siblings specifically
-                  // (+10px), on top of the usual node spacing.
-                  return a.parent === b.parent ? 1 + 10 / X_GAP : 1.5;
-                })(h);
-              var lo = Infinity, hi = -Infinity, maxDepth = 0;
-              h.each(function (n) {
-                next[n.data.id].lx = n.x;
-                if (n.x < lo) lo = n.x;
-                if (n.x > hi) hi = n.x;
-                if (n.depth > maxDepth) maxDepth = n.depth;
+            // One block per top-level idea -- or per group of versions of
+            // one, which stay together and never wrap apart.
+            var blocks = groupSiblings(tree).map(function (group) {
+              var block = buildBlock(group.members);
+              var maxDepth = 0;
+              Object.keys(block.pos).forEach(function (id) {
+                if (next[id] && next[id].depth > maxDepth) maxDepth = next[id].depth;
               });
-              return { idea: idea, lo: lo, w: hi - lo, h: maxDepth * Y_GAP + ALT_Y };
+              var ids = group.members.map(function (member) { return member.id; });
+              groupMembers[group.members[0].id] = ids;
+              return {
+                idea: group.members[0],
+                ids: ids,
+                pos: block.pos,
+                lo: block.min,
+                w: block.max - block.min,
+                h: maxDepth * Y_GAP + ALT_Y
+              };
             });
 
             // Place the rows top to bottom, each one centered.
             var counts = chooseRows(blocks);
             var minX = Infinity, maxX = -Infinity, top = TOP, start = 0;
-            rowOf = {};
             counts.forEach(function (c, r) {
               var x = width / 2 - rowWidth(blocks, start, start + c) / 2;
               var rowH = 0, ids = [];
               blocks.slice(start, start + c).forEach(function (b) {
                 var offsetX = x - b.lo;
-                (function place(idea) {
-                  var node = next[idea.id];
+                Object.keys(b.pos).forEach(function (id) {
+                  var node = next[id];
+                  if (!node) return;
                   var altY = (node.depth > 0 && node.rank % 2 === 1) ? ALT_Y : 0;
-                  node.tx = offsetX + node.lx;
+                  node.tx = offsetX + b.pos[id];
                   node.ty = top + node.depth * Y_GAP + altY;
                   if (node.tx < minX) minX = node.tx;
                   if (node.tx > maxX) maxX = node.tx;
-                  idea.children.forEach(place);
-                })(b.idea);
-                rowOf[b.idea.id] = r;
+                });
+                b.ids.forEach(function (id) { rowOf[id] = r; });
                 ids.push(b.idea.id);
                 rowH = Math.max(rowH, b.h);
                 x += b.w + TREE_GAP_X;
@@ -1554,20 +1819,35 @@
             spawnAt = {};
           }
 
+          // Ties between versions of the same idea. They're drawn, but kept
+          // out of the simulation -- where each version sits is the layout's
+          // business, not a spring's.
+          var versionLinks = [];
+          nodes.forEach(function (node) {
+            if (node.versionOf && next[node.versionOf]) {
+              versionLinks.push({ source: next[node.versionOf], target: node });
+            }
+          });
+
           sim.nodes(nodes);
           sim.force("link").links(links);
 
           linkSel = linkLayer.selectAll("path")
-            .data(links, function (d) { return d.target.id; })
+            .data(links, function (d) { return d.source.id + ">" + d.target.id; })
             .join("path")
             .attr("class", "link")
             .classed("is-adoptable", function (d) { return d.target.adoptable; });
 
           var flowLinks = links.filter(function (d) { return d.target.adoptable; });
           linkFlowSel = linkFlowLayer.selectAll("path")
-            .data(flowLinks, function (d) { return d.target.id; })
+            .data(flowLinks, function (d) { return d.source.id + ">" + d.target.id; })
             .join("path")
             .attr("class", "link-flow");
+
+          versionSel = versionLayer.selectAll("path")
+            .data(versionLinks, function (d) { return d.source.id + "~" + d.target.id; })
+            .join("path")
+            .attr("class", "version-link");
 
           nodeSel = nodeLayer.selectAll("g.node")
             .data(nodes, function (d) { return d.id; })
@@ -1678,21 +1958,13 @@
         return null;
       }
 
-      function cloneTree(list) {
-        return list.map(function (n) {
-          var copy = { id: n.id, text: n.text, children: cloneTree(n.children) };
-          if (typeof n.row === "number") copy.row = n.row;
-          return copy;
-        });
-      }
-
       // What's saved under HISTORY_KEY is wrapped in a versioned envelope --
       // { version, state } -- so the shape of `state` can keep changing
       // (a rename, a new field, whatever) without ever touching how the
       // envelope itself is read. Data saved before this system existed has
       // no envelope at all (just the old { history, cursor } shape directly);
       // that's treated as version 0.
-      var CURRENT_VERSION = 2;
+      var CURRENT_VERSION = 3;
 
       // Each migration takes the previous version's `state` and returns the
       // next version's `state`. Once shipped, a migration is never edited --
@@ -1709,6 +1981,22 @@
           // Adds `ui`, for the handful of view preferences worth remembering.
           state = state || {};
           return { history: state.history || [], cursor: state.cursor || 0, ui: { legendOpen: true } };
+        },
+        3: function (state) {
+          // Snapshots were nested trees, which can't express one criticism
+          // belonging to two ideas; they're now flat ideas plus the edges
+          // between them (see ideasToGraph).
+          state = state || {};
+          var history = (Array.isArray(state.history) ? state.history : []).map(function (entry) {
+            var nested = Array.isArray(entry && entry.snapshot) ? entry.snapshot.map(normalize).filter(Boolean) : [];
+            entry = entry || {};
+            return {
+              snapshot: ideasToGraph(nested),
+              type: entry.type, detail: entry.detail, summary: entry.summary,
+              time: entry.time, rows: entry.rows
+            };
+          });
+          return { history: history, cursor: state.cursor || 0, ui: state.ui || { legendOpen: true } };
         }
       };
 
@@ -1747,7 +2035,7 @@
           if (state && Array.isArray(state.history) && state.history.length) {
             history = state.history.map(function (e) {
               return {
-                snapshot: Array.isArray(e.snapshot) ? e.snapshot.map(normalize).filter(Boolean) : [],
+                snapshot: readGraph(e.snapshot),
                 type: typeof e.type === "string" ? e.type : "add",
                 // Newer entries carry `detail` -- a few plain keywords/values
                 // the display text is generated from at render time (see
@@ -1762,7 +2050,7 @@
               };
             });
             cursor = Math.min(Math.max(0, state.cursor | 0), history.length - 1);
-            roots = cloneTree(history[cursor].snapshot);
+            roots = graphToIdeas(history[cursor].snapshot);
             rowsMeta = copyRowsMeta(history[cursor].rows);
             return;
           }
@@ -1783,7 +2071,7 @@
         }
 
         roots = seed;
-        history = [{ snapshot: cloneTree(seed), type: "start", detail: {}, time: Date.now() }];
+        history = [{ snapshot: ideasToGraph(seed), type: "start", detail: {}, time: Date.now() }];
         cursor = 0;
       }
 
@@ -1806,7 +2094,7 @@
       // at render time -- see summaryFor for why.
       function recordEvent(type, detail) {
         if (cursor < history.length - 1) history.length = cursor + 1;
-        history.push({ snapshot: cloneTree(roots), type: type, detail: detail || {}, time: Date.now(), rows: copyRowsMeta(rowsMeta) });
+        history.push({ snapshot: ideasToGraph(roots), type: type, detail: detail || {}, time: Date.now(), rows: copyRowsMeta(rowsMeta) });
         cursor = history.length - 1;
         saveHistory();
         updateTimelineUI();
@@ -1825,6 +2113,8 @@
             return "Start";
           case "add-idea":
             return "Added idea “" + preview(d.text || "", 24) + "”";
+          case "revise":
+            return "Revised “" + preview(d.ofText || "", 20) + "” as “" + preview(d.text || "", 20) + "”";
           case "add-criticism":
             return "Submitted criticism “" + preview(d.text || "", 24) + "”";
           case "delete":
@@ -1839,13 +2129,19 @@
       }
 
       /* ---------- rational adoptability ---------- */
-      // A leaf is always rationally adoptable. An internal node is rationally adoptable
-      // exactly when none of its children are. Children are settled before their parent.
+      // A leaf is always rationally adoptable. An idea with criticisms is
+      // rationally adoptable exactly when none of them are. Criticisms are
+      // settled before the idea they attack, and a shared criticism is
+      // settled once -- the same verdict counting for every idea it attacks.
       function evaluate(list, out) {
-        list.forEach(function (n) {
-          evaluate(n.children, out);
-          out[n.id] = n.children.every(function (c) { return !out[c.id]; });
-        });
+        (function visit(ideas) {
+          ideas.forEach(function (idea) {
+            if (out[idea.id] !== undefined) return;
+            out[idea.id] = true;
+            visit(idea.children);
+            out[idea.id] = idea.children.every(function (c) { return !out[c.id]; });
+          });
+        })(list);
       }
 
       var emptyHint = document.getElementById("empty-hint");
@@ -1853,9 +2149,7 @@
       var HINT_SECOND = "Tap anywhere in empty space to add another idea. Tap an idea to criticize it.";
 
       function countIdeas(list) {
-        var n = 0;
-        list.forEach(function (node) { n += 1 + countDescendants(node); });
-        return n;
+        return allIdeas(list).length;
       }
 
       // A one-line report of the state of the discussion right now: how many
@@ -1916,7 +2210,7 @@
       function restoreTo(index) {
         if (index < 0 || index >= history.length) return;
         cursor = index;
-        roots = cloneTree(history[index].snapshot);
+        roots = graphToIdeas(history[index].snapshot);
         rowsMeta = copyRowsMeta(history[index].rows);
         refresh();
         saveHistory();
@@ -2117,6 +2411,8 @@
       var modalBackdrop = document.getElementById("modal-backdrop");
       var modalTitle = document.getElementById("modal-title");
       var modalTextarea = document.getElementById("modal-textarea");
+      var modalChecks = document.getElementById("modal-checks");
+      var modalMenu = document.getElementById("modal-menu");
       var modalQuote = document.getElementById("modal-quote");
       var modalMessage = document.getElementById("modal-message");
       var modalForm = document.getElementById("modal-form");
@@ -2130,23 +2426,80 @@
       var modalCloseTimer = null;
 
       // opts: title, buttonText, onSubmit, and either
-      //   { placeholder, quote }               -- a text-entry modal, optionally
-      //                                            quoting the idea it's about, or
-      //   { mode: "confirm", message, danger } -- a yes/no confirmation, or
-      //   { mode: "info", message }            -- a read-only note, single Close button
+      //   { placeholder, quote, value, checks } -- a text-entry modal, optionally
+      //                                            quoting the idea it's about and
+      //                                            offering tick boxes (see below), or
+      //   { mode: "confirm", message, danger }  -- a yes/no confirmation, or
+      //   { mode: "info", message }             -- a read-only note, single Close button, or
+      //   { mode: "menu", items: [{ label, danger, onPick }] } -- a short list of
+      //                                            things you might do next.
+      //
+      // `checks` is [{ key, label, note, checked, head }]; onSubmit is then
+      // called with the text and the keys still ticked.
       function openModal(opts) {
-        modalMode = opts.mode === "confirm" ? "confirm" : opts.mode === "info" ? "info" : "form";
+        modalMode = opts.mode === "confirm" ? "confirm"
+          : opts.mode === "info" ? "info"
+          : opts.mode === "menu" ? "menu" : "form";
         modalTitle.textContent = opts.title;
         modalOnSubmit = opts.onSubmit;
         modalOpener = document.activeElement;
 
-        modalSubmitBtn.hidden = modalMode === "info";
-        if (modalMode !== "info") {
+        modalSubmitBtn.hidden = modalMode === "info" || modalMode === "menu";
+        if (!modalSubmitBtn.hidden) {
           modalSubmitBtn.textContent = opts.buttonText;
           modalSubmitBtn.classList.toggle("modal-btn--primary", !opts.danger);
           modalSubmitBtn.classList.toggle("modal-btn--danger", !!opts.danger);
         }
         modalCancelBtn.textContent = modalMode === "info" ? (opts.buttonText || "Close") : "Cancel";
+
+        modalMenu.innerHTML = "";
+        modalMenu.hidden = modalMode !== "menu";
+        if (modalMode === "menu") {
+          (opts.items || []).forEach(function (item) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "modal-btn " + (item.danger ? "modal-btn--danger" : "modal-btn--primary");
+            btn.textContent = item.label;
+            btn.addEventListener("click", function () {
+              closeModal();
+              if (item.onPick) item.onPick();
+            });
+            modalMenu.appendChild(btn);
+          });
+        }
+
+        modalChecks.innerHTML = "";
+        modalChecks.hidden = !(modalMode === "form" && opts.checks && opts.checks.length);
+        if (!modalChecks.hidden) {
+          opts.checks.forEach(function (check) {
+            var li = document.createElement("li");
+            if (check.head) {
+              li.className = "modal-checks-head";
+              li.textContent = check.head;
+              modalChecks.appendChild(li);
+              if (!check.key) return; // a heading on its own
+              li = document.createElement("li");
+            }
+            var label = document.createElement("label");
+            label.className = "modal-check";
+            var input = document.createElement("input");
+            input.type = "checkbox";
+            input.checked = check.checked !== false;
+            input.setAttribute("data-key", check.key);
+            var text = document.createElement("span");
+            text.textContent = check.label;
+            if (check.note) {
+              var note = document.createElement("span");
+              note.className = "modal-check-note";
+              note.textContent = check.note;
+              text.appendChild(note);
+            }
+            label.appendChild(input);
+            label.appendChild(text);
+            li.appendChild(label);
+            modalChecks.appendChild(li);
+          });
+        }
 
         if (opts.quote) {
           modalQuote.textContent = opts.quote;
@@ -2155,7 +2508,7 @@
           modalQuote.hidden = true;
         }
 
-        if (modalMode === "confirm" || modalMode === "info") {
+        if (modalMode === "confirm" || modalMode === "info" || modalMode === "menu") {
           modalTextarea.hidden = true;
           modalMessage.hidden = false;
           // Info-mode content is always our own hand-written copy (never
@@ -2163,12 +2516,13 @@
           // an italicized title and real links; everything else here is
           // plain text set via textContent, since it may echo back text
           // someone typed (an idea, a criticism).
+          modalMessage.hidden = !opts.message;
           if (modalMode === "info") modalMessage.innerHTML = opts.message || "";
           else modalMessage.textContent = opts.message || "";
         } else {
           modalTextarea.hidden = false;
           modalMessage.hidden = true;
-          modalTextarea.value = "";
+          modalTextarea.value = opts.value || "";
           modalTextarea.placeholder = opts.placeholder || "";
           modalTextarea.setAttribute("aria-label", opts.title);
         }
@@ -2227,9 +2581,12 @@
         }
         var text = modalTextarea.value.trim();
         if (!text) { modalTextarea.focus(); return; }
+        var ticked = [].slice.call(modalChecks.querySelectorAll("input:checked")).map(function (input) {
+          return input.getAttribute("data-key");
+        });
         var fn = modalOnSubmit;
         closeModal();
-        if (fn) fn(text);
+        if (fn) fn(text, ticked);
       }
 
       modalSubmitBtn.addEventListener("click", submitModal);
@@ -2251,7 +2608,7 @@
       // A minimal focus trap: Tab from the last control wraps to the first, and back.
       modalEl.addEventListener("keydown", function (e) {
         if (e.key !== "Tab") return;
-        var focusables = modalEl.querySelectorAll("textarea:not([hidden]), button");
+        var focusables = modalEl.querySelectorAll("textarea:not([hidden]), input[type=checkbox], button");
         if (!focusables.length) return;
         var first = focusables[0], last = focusables[focusables.length - 1];
         if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -2274,18 +2631,10 @@
         });
       };
 
-      interactions.onNodeTap = function (e, d) {
-        var target = findIdea(d.id);
-        if (!target) return;
-        // Shift+click deletes immediately, skipping the confirmation dialog --
-        // an accelerator for people who know what they're doing (e.g. during
-        // a live demo) and don't want a modal in the way each time.
-        if (e.shiftKey) {
-          var n = countDescendants(target);
-          removeIdea(d.id);
-          commit("delete", { text: d.text, count: n });
-          return;
-        }
+      var SUPERSEDE_KEY = "__supersede";
+      var SUPERSEDED_TEXT = "This idea has been superseded by a later revision. (Added automatically.)";
+
+      function criticizeIdea(target) {
         openModal({
           title: "Submit a criticism",
           quote: target.text,
@@ -2297,20 +2646,67 @@
             commit("add-criticism", { text: child.text });
           }
         });
-      };
+      }
 
-      interactions.onNodeLongPress = function (e, d) {
-        var target = findIdea(d.id);
-        if (!target) return;
-        var n = countDescendants(target);
-        // Shift+long-press also skips the confirmation, same as shift+click.
-        if (e.shiftKey) {
-          removeIdea(d.id);
-          commit("delete", { text: d.text, count: n });
-          return;
+      // Revising never overwrites: it adds a new version of the idea beside
+      // the old one, carrying over whichever criticisms you say still apply
+      // (they stay one criticism, now attacking both versions). Saying the
+      // revision supersedes the old version files a criticism to that effect
+      // against it, so the old version stops being adoptable by the ordinary
+      // rule rather than by a special case.
+      function reviseIdea(target) {
+        var kids = target.children.slice();
+        var checks = [];
+        if (kids.length) {
+          checks.push({ head: kids.length === 1 ? "Does this criticism still apply?" : "Which criticisms still apply?" });
+          kids.forEach(function (child) {
+            checks.push({ key: child.id, label: preview(child.text, 80), checked: true });
+          });
         }
+        checks.push({
+          head: "This version",
+          key: SUPERSEDE_KEY,
+          label: "The revision supersedes it",
+          note: "Files a criticism saying so, so it stops being adoptable.",
+          checked: true
+        });
+
+        openModal({
+          title: "Revise this idea",
+          quote: target.text,
+          placeholder: "What’s the better version?",
+          value: target.text,
+          buttonText: "Revise",
+          checks: checks,
+          onSubmit: function (text, ticked) {
+            var revision = { id: uid(), text: text, children: [], versionOf: target.id };
+            kids.forEach(function (child) {
+              if (ticked.indexOf(child.id) !== -1) revision.children.push(child);
+            });
+            // The new version hangs from everything the old one hangs from,
+            // right beside it.
+            var parents = parentsOf(target.id);
+            parents.forEach(function (parent) {
+              var at = parent.children.indexOf(target);
+              parent.children.splice(at + 1, 0, revision);
+            });
+            var atRoot = roots.indexOf(target);
+            if (atRoot !== -1) roots.splice(atRoot + 1, 0, revision);
+            var supersedes = ticked.indexOf(SUPERSEDE_KEY) !== -1;
+            if (supersedes) {
+              target.children.push({ id: uid(), text: SUPERSEDED_TEXT, children: [] });
+            }
+            commit("revise", { text: text, ofText: target.text, supersedes: supersedes });
+          }
+        });
+      }
+
+      function confirmDelete(target, d) {
+        var n = countDescendants(target);
+        var shared = parentsOf(target.id).length > 1;
         var message = "Are you sure you want to delete “" + preview(d.text, 32) + "”" +
-          (n > 0 ? " and its " + n + (n === 1 ? " criticism" : " criticisms") : "") + "?";
+          (n > 0 ? " and its " + n + (n === 1 ? " criticism" : " criticisms") : "") + "?" +
+          (shared ? " It applies to more than one version of an idea, and goes from all of them." : "");
         openModal({
           mode: "confirm",
           title: "Confirm delete",
@@ -2322,6 +2718,43 @@
             commit("delete", { text: d.text, count: n });
           }
         });
+      }
+
+      interactions.onNodeTap = function (e, d) {
+        var target = findIdea(d.id);
+        if (!target) return;
+        // Shift+click deletes immediately, skipping both the menu and the
+        // confirmation -- an accelerator for people who know what they're
+        // doing (e.g. during a live demo).
+        if (e.shiftKey) {
+          var n = countDescendants(target);
+          removeIdea(d.id);
+          commit("delete", { text: d.text, count: n });
+          return;
+        }
+        openModal({
+          mode: "menu",
+          title: "This idea",
+          quote: target.text,
+          items: [
+            { label: "Criticize", onPick: function () { criticizeIdea(target); } },
+            { label: "Revise", onPick: function () { reviseIdea(target); } },
+            { label: "Delete", danger: true, onPick: function () { confirmDelete(target, d); } }
+          ]
+        });
+      };
+
+      interactions.onNodeLongPress = function (e, d) {
+        var target = findIdea(d.id);
+        if (!target) return;
+        // Shift+long-press skips the confirmation, same as shift+click.
+        if (e.shiftKey) {
+          var n = countDescendants(target);
+          removeIdea(d.id);
+          commit("delete", { text: d.text, count: n });
+          return;
+        }
+        confirmDelete(target, d);
       };
 
       document.getElementById("fit-btn").addEventListener("click", function () { forest.fit(); });
@@ -2361,7 +2794,7 @@
           onSubmit: function () {
             roots = [];
             rowsMeta = null;
-            history = [{ snapshot: [], type: "start", detail: {}, time: Date.now() }];
+            history = [{ snapshot: { roots: [], nodes: [], edges: [] }, type: "start", detail: {}, time: Date.now() }];
             cursor = 0;
             try {
               localStorage.removeItem(HISTORY_KEY);
