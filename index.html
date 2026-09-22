@@ -182,6 +182,19 @@
     }
   }
 
+  /* A folded-up run of superseded versions: a little stack, standing in for
+     the ideas inside it until you open it. */
+  .forest .node .stack { display: none; fill: var(--right); stroke: var(--label-dim); stroke-width: 1.5px; }
+  .forest .node.is-pile .stack { display: block; }
+  .forest .node.is-pile circle.core,
+  .forest .node.is-pile:not(.is-adoptable) circle.core,
+  .forest .node.is-pile.is-root:not(.is-adoptable) circle.core {
+    fill: var(--right);
+    stroke: var(--label-dim);
+    stroke-width: 1.5px;
+  }
+  .forest .node.is-pile text { fill: var(--label-dim); }
+
   /* Joins two versions of the same idea: not an attack, so it's drawn as a
      quiet dashed tie rather than a solid edge. */
   .forest .version-link {
@@ -1043,6 +1056,7 @@
         if (!d3) return {
           update: function () {}, fit: function () {},
           canvasPoint: function () { return null; },
+          togglePile: function () {},
           placeNewRoot: function (idea) { roots.push(idea); },
           shownRows: function () { return null; }
         };
@@ -1085,7 +1099,7 @@
           }
         });
 
-        function radius(d) { return 10; }
+        function radius(d) { return d.pile ? 7 : 10; }
 
         /* ---------- laying out one tree ---------- */
         // Ideas that are versions of each other (see idea.versionOf) sit side
@@ -1115,6 +1129,64 @@
             group.members.sort(function (a, b) { return index[a.id] - index[b.id]; });
           });
           return groups;
+        }
+
+        // Once a version has been superseded it's out of the discussion, so a
+        // run of them folds into a single pile beside the version still in
+        // play -- and everything reachable only through them (their own
+        // criticisms, the note saying they were superseded) goes with them.
+        // Criticisms the live version still carries stay where they are.
+        var expandedPiles = {};   // chain's first version id -> true while you've opened it
+
+        function isSuperseded(idea) {
+          return idea.children.some(function (child) { return child.auto; });
+        }
+
+        // What's actually drawn, given the ideas themselves. Ideas are wrapped
+        // rather than changed, one wrapper per idea however many parents it
+        // has, so a shared criticism stays a single thing here too.
+        function displayForest(list) {
+          var wrapped = {};
+          function displayList(ideas) {
+            var out = [];
+            groupSiblings(ideas).forEach(function (group) {
+              var members = group.members;
+              var baseId = members[0].id;
+              var collapsed = expandedPiles[baseId] ? [] : members.filter(function (member, i) {
+                return i < members.length - 1 && isSuperseded(member);
+              });
+              var pile = null;
+              if (collapsed.length) {
+                pile = {
+                  id: "pile:" + baseId,
+                  text: collapsed.length + (collapsed.length === 1 ? " earlier version" : " earlier versions"),
+                  children: [],
+                  pile: true,
+                  count: collapsed.length,
+                  baseId: baseId,
+                  members: collapsed,
+                  row: collapsed[0].row
+                };
+                out.push(pile);
+              }
+              members.forEach(function (member) {
+                if (collapsed.indexOf(member) !== -1) return;
+                var already = wrapped[member.id];
+                if (already) { out.push(already); return; }
+                var versionOf = member.versionOf;
+                if (pile && collapsed.some(function (old) { return old.id === versionOf; })) versionOf = pile.id;
+                var copy = {
+                  id: member.id, text: member.text, auto: member.auto,
+                  versionOf: versionOf, row: member.row, children: []
+                };
+                wrapped[member.id] = copy;
+                out.push(copy);
+                copy.children = displayList(member.children);
+              });
+            });
+            return out;
+          }
+          return displayList(list);
         }
 
         // Lays out a version group and everything under it, in its own
@@ -1381,12 +1453,25 @@
           // a reorder within a row just keeps whatever the rows already were.
           setManualRows(rowsIds, rowsChanged);
 
-          var mine = rowsIds[newRowOf[d.id]], k2 = mine.indexOf(d.id);
-          var neighborId = k2 > 0 ? mine[k2 - 1] : mine[k2 + 1];
+          // A pile isn't an idea, so the history entry names the version
+          // still in play from the chain that was dragged.
+          var moved = groupMembers[groupLeader[d.id] || d.id] || [d.id];
+          var movedId = moved[moved.length - 1];
+          var mine = rowsIds[newRowOf[movedId]] || [];
+          var k2 = mine.indexOf(movedId);
+          // Look past the chain's own versions for the idea it landed beside.
+          var neighborId = null;
+          for (var back = k2 - 1; back >= 0 && !neighborId; back--) {
+            if (moved.indexOf(mine[back]) === -1) neighborId = mine[back];
+          }
+          var landedAfter = !!neighborId;
+          for (var fwd = k2 + 1; fwd < mine.length && !neighborId; fwd++) {
+            if (moved.indexOf(mine[fwd]) === -1) neighborId = mine[fwd];
+          }
           return {
-            text: d.text,
-            neighborText: neighborId ? byIdea[neighborId].text : null,
-            placement: k2 > 0 ? "after" : "before"
+            text: (byIdea[movedId] || d).text,
+            neighborText: (neighborId && byIdea[neighborId]) ? byIdea[neighborId].text : null,
+            placement: landedAfter ? "after" : "before"
           };
         }
 
@@ -1398,8 +1483,8 @@
           sel.each(function (d) {
             var el = d3.select(this);
             el.selectAll("tspan").remove();
-            if (d.depth === 0) {
-              el.append("tspan").text(preview(d.text, 16));
+            if (d.depth === 0 || d.pile) {
+              el.append("tspan").text(preview(d.text, 18));
             }
           });
         }
@@ -1678,6 +1763,7 @@
         // Shared by the tooltip and each node's aria-label, so a screen
         // reader hears the same status a sighted user sees on hover.
         function statusText(d) {
+          if (d.pile) return "Folded away. Tap to open.";
           var detail = d.adoptable
             ? "(no pending criticisms)"
             : "(" + d.pendingCount + " pending " + (d.pendingCount === 1 ? "criticism" : "criticisms") + ")";
@@ -1696,6 +1782,7 @@
           lastTree = tree;
           lastStatus = status || {};
           var nodes = [], links = [], next = {};
+          var shown = displayForest(tree);
 
           function jitter(spread) { return (Math.random() - 0.5) * spread; }
 
@@ -1720,6 +1807,9 @@
             node.parentId = parentId;          // the first parent: what it's laid out under
             node.parentIds = parentId ? [parentId] : [];
             node.versionOf = idea.versionOf || null;
+            node.pile = !!idea.pile;
+            node.pileCount = idea.count || 0;
+            node.pileBase = idea.baseId || null;
             node.adoptable = !!lastStatus[id];
             node.rank = rank; // this idea's current position among its siblings
             // True when this node existed before and has changed which of its
@@ -1737,7 +1827,7 @@
               walk(c, depth + 1, id, i);
             });
           }
-          tree.forEach(function (idea, i) {
+          shown.forEach(function (idea, i) {
             walk(idea, 0, null, i);
           });
           byId = next;
@@ -1756,18 +1846,28 @@
 
             // One block per top-level idea -- or per group of versions of
             // one, which stay together and never wrap apart.
-            var blocks = groupSiblings(tree).map(function (group) {
+            var blocks = groupSiblings(shown).map(function (group) {
               var block = buildBlock(group.members);
               var maxDepth = 0;
               Object.keys(block.pos).forEach(function (id) {
                 if (next[id] && next[id].depth > maxDepth) maxDepth = next[id].depth;
               });
-              var ids = group.members.map(function (member) { return member.id; });
-              groupMembers[group.members[0].id] = ids;
-              ids.forEach(function (id) { groupLeader[id] = group.members[0].id; });
+              // A pile stands for the real ideas folded into it, so dragging
+              // or reordering the group still moves all of them.
+              var ids = [];
+              group.members.forEach(function (member) {
+                if (member.pile) member.members.forEach(function (old) { ids.push(old.id); });
+                else ids.push(member.id);
+              });
+              var leaderId = group.members[0].id;
+              var shownIds = group.members.map(function (member) { return member.id; });
+              groupMembers[leaderId] = ids;
+              ids.forEach(function (id) { groupLeader[id] = leaderId; });
+              group.members.forEach(function (member) { groupLeader[member.id] = leaderId; });
               return {
                 idea: group.members[0],
                 ids: ids,
+                shownIds: shownIds,
                 pos: block.pos,
                 versionIndex: block.versionIndex,
                 lo: block.min,
@@ -1798,6 +1898,9 @@
                   if (node.tx > maxX) maxX = node.tx;
                 });
                 b.ids.forEach(function (id) { rowOf[id] = r; });
+                // Piles stand in for ideas that aren't drawn, so they need a
+                // row of their own to be draggable.
+                b.shownIds.forEach(function (id) { rowOf[id] = r; });
                 ids.push(b.idea.id);
                 rowH = Math.max(rowH, b.h);
                 x += b.w + TREE_GAP_X;
@@ -1867,6 +1970,8 @@
                 .attr("class", "node")
                 .attr("tabindex", 0)
                 .attr("role", "img");
+              g.append("circle").attr("class", "stack stack-far");
+              g.append("circle").attr("class", "stack stack-near");
               g.append("circle").attr("class", "core");
               g.append("text");
               g.append("text").attr("class", "preview");
@@ -1904,11 +2009,21 @@
 
           nodeSel
             .classed("is-root", function (d) { return d.depth === 0; })
+            .classed("is-pile", function (d) { return d.pile; })
             .classed("is-adoptable", function (d) { return d.adoptable; })
             .attr("aria-label", function (d) {
+              if (d.pile) return d.text + ", superseded. Activate to open.";
               return "Idea: " + d.text + ". " + statusText(d) + ". Activate to add a criticism.";
             });
           nodeSel.select("circle.core").attr("r", radius);
+          // The stack sits behind and to the left, so a pile reads as several
+          // ideas folded into one.
+          nodeSel.select("circle.stack-far")
+            .attr("r", radius).attr("cx", -9).attr("cy", 4)
+            .attr("opacity", function (d) { return d.pileCount > 2 ? 1 : 0; });
+          nodeSel.select("circle.stack-near")
+            .attr("r", radius).attr("cx", -4.5).attr("cy", 2)
+            .attr("opacity", function (d) { return d.pileCount > 1 ? 1 : 0; });
           // Only root ideas carry a label on the canvas now, centered above the node.
           nodeSel.select("text")
             .attr("text-anchor", "middle")
@@ -1922,7 +2037,9 @@
             .attr("y", function (d) { return radius(d) + 7.5; })
             .attr("dy", "0.8em")
             .text(function (d) {
-              return d.depth === 0 ? "" : preview(d.text, 16);
+              // A pile is labelled above like a title, so it doesn't also
+              // get a preview underneath.
+              return (d.depth === 0 || d.pile) ? "" : preview(d.text, 16);
             });
 
           // The very first idea (or the first one after a reset) should always
@@ -1943,6 +2060,13 @@
             return (e && typeof e.clientX === "number") ? d3.pointer(e, viewport.node()) : null;
           },
           placeNewRoot: placeNewRoot,
+          // Opening a pile is a way of looking, not a change to the
+          // discussion, so it isn't saved with it.
+          togglePile: function (baseId) {
+            if (expandedPiles[baseId]) delete expandedPiles[baseId];
+            else expandedPiles[baseId] = true;
+            update(lastTree, lastStatus);
+          },
           // The rows as currently shown, for saving with a new point in history.
           shownRows: function () {
             return { rowOf: rowOf, manual: shownManual, w: width, h: height };
@@ -2735,6 +2859,7 @@
       }
 
       interactions.onNodeTap = function (e, d) {
+        if (d.pile) { forest.togglePile(d.pileBase); return; }
         var target = findIdea(d.id);
         if (!target) return;
         // Shift+click deletes immediately, skipping both the menu and the
