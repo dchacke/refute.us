@@ -760,7 +760,13 @@
       // instead of its number (e.g. "1.2"), which is no longer shown to users.
       function preview(text, max) {
         var flat = text.replace(/\s+/g, " ").trim();
-        return flat.length > max ? flat.slice(0, max) + "…" : flat;
+        // Truncating to `max` chars and adding "…" only actually shortens
+        // the text when there's more than one character being cut -- at
+        // exactly one character over, the "…" just replaces that one
+        // character one-for-one (e.g. "Newtonian gravity" at max 16 becomes
+        // "Newtonian gravit…", same length as the original), so it isn't
+        // worth doing.
+        return flat.length > max + 1 ? flat.slice(0, max) + "…" : flat;
       }
 
       function findIdea(id, list) {
@@ -911,9 +917,7 @@
             var el = d3.select(this);
             el.selectAll("tspan").remove();
             if (d.depth === 0) {
-              var flat = d.text.replace(/\s+/g, " ");
-              var body = flat.length > 16 ? flat.slice(0, 16) + "…" : flat;
-              el.append("tspan").text(body);
+              el.append("tspan").text(preview(d.text, 16));
             }
           });
         }
@@ -1276,9 +1280,7 @@
             .attr("y", function (d) { return radius(d) + 7.5; })
             .attr("dy", "0.8em")
             .text(function (d) {
-              if (d.depth === 0) return "";
-              var flat = d.text.replace(/\s+/g, " ");
-              return flat.length > 16 ? flat.slice(0, 16) + "…" : flat;
+              return d.depth === 0 ? "" : preview(d.text, 16);
             });
 
           // The very first idea (or the first one after a reset) should always
