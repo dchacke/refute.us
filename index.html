@@ -505,6 +505,13 @@
   .timeline-tick:hover { border-color: var(--focus); }
   .timeline-tick:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
+  /* Forces the ew-resize cursor everywhere while a tick-initiated drag is in
+     progress (see the pointerdown handling on .timeline-track-wrap in the
+     script) -- without this, the cursor would fall back to whatever's
+     actually under the pointer, e.g. a tick's own "pointer" cursor, even
+     though the gesture is a drag the whole time it's held. */
+  body.is-scrubbing, body.is-scrubbing * { cursor: ew-resize !important; }
+
   /* ---------- modal ---------- */
   .modal-backdrop {
     position: fixed;
@@ -1524,6 +1531,7 @@
       var timelineCount = document.getElementById("timeline-count");
       var timelineSlider = document.getElementById("timeline-slider");
       var timelineTicks = document.getElementById("timeline-ticks");
+      var timelineTrackWrap = document.querySelector(".timeline-track-wrap");
       var timelineHint = document.getElementById("timeline-hint");
       var timelineHintText = document.getElementById("timeline-hint-text");
       var timelineFooter = document.getElementById("timeline");
@@ -1612,6 +1620,57 @@
       timelineSlider.addEventListener("pointercancel", revertTimelineHint);
       timelineSlider.addEventListener("change", revertTimelineHint);
       timelineSlider.addEventListener("blur", revertTimelineHint);
+
+      // Starting a drag directly on a tick used to do nothing until release
+      // (a tick is its own <button>, sitting on top of the slider purely for
+      // click-to-jump and its tooltip, so the pointerdown never reached the
+      // slider underneath) -- this makes that same gesture jump to the tick
+      // right away and then keep tracking the pointer exactly like a drag
+      // started on open track does, by driving the slider itself. Capture is
+      // taken on the track wrapper (which never gets rebuilt) rather than the
+      // tick (which does get rebuilt on every restoreTo(), as updateTimelineUI()
+      // replaces all the tick buttons) -- otherwise the capture would be lost
+      // mid-drag the moment the index first changes.
+      var tickDragPointerId = null;
+      function timelineIndexFromClientX(clientX) {
+        var track = timelineSlider.getBoundingClientRect();
+        // Matches the tick placement formula above: the thumb (and so the
+        // usable track) is inset 10px from each edge.
+        var usable = Math.max(1, track.width - 20);
+        var frac = (clientX - track.left - 10) / usable;
+        frac = Math.max(0, Math.min(1, frac));
+        return Math.round(frac * (history.length - 1));
+      }
+      function jumpToClientX(clientX) {
+        var idx = timelineIndexFromClientX(clientX);
+        if (idx !== cursor) restoreTo(idx);
+        setTimelineText(formatTime(history[cursor].time));
+      }
+      timelineTrackWrap.addEventListener("pointerdown", function (e) {
+        if (!e.target.classList || !e.target.classList.contains("timeline-tick")) return;
+        tickDragPointerId = e.pointerId;
+        timelineTrackWrap.setPointerCapture(e.pointerId);
+        // A tick keeps its own "pointer" cursor on hover/click, but for the
+        // duration of an actual drag it should read as a drag everywhere,
+        // same as the open track -- forced via a body-level class since the
+        // cursor is otherwise picked by whatever's visually under the
+        // pointer, not by which element has capture.
+        document.body.classList.add("is-scrubbing");
+        jumpToClientX(e.clientX);
+      });
+      timelineTrackWrap.addEventListener("pointermove", function (e) {
+        if (e.pointerId !== tickDragPointerId) return;
+        jumpToClientX(e.clientX);
+      });
+      function endTickDrag(e) {
+        if (e.pointerId !== tickDragPointerId) return;
+        tickDragPointerId = null;
+        try { timelineTrackWrap.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+        document.body.classList.remove("is-scrubbing");
+        revertTimelineHint();
+      }
+      timelineTrackWrap.addEventListener("pointerup", endTickDrag);
+      timelineTrackWrap.addEventListener("pointercancel", endTickDrag);
 
       // Smooth text transitions for the report banner and the timeline hint,
       // via Torph (https://torph.lochie.me/). Loaded on demand -- if it fails
