@@ -887,7 +887,11 @@
       // If d3 fails to load, the rest of the page still runs but the canvas stays empty.
       var forest = (function () {
         var d3 = window.d3;
-        if (!d3) return { update: function () {}, fit: function () {} };
+        if (!d3) return {
+          update: function () {}, fit: function () {},
+          canvasPoint: function () { return null; },
+          placeNewRoot: function (idea) { roots.push(idea); }
+        };
 
         // Layout units: horizontal room per node, vertical distance between levels, top margin.
         var X_GAP = 60, Y_GAP = 80, TOP = 50;
@@ -939,7 +943,7 @@
         var rowOf = {};               // tree (root idea id) -> row index, from the last layout
         var layoutRows = [];          // [{ ids, top, bottom }] from the last layout, for drops
         var manualRows = false;       // true once you've dragged a tree into another row yourself
-        var manualSize = null;        // pane size at that moment
+        var rowsSize = null;          // pane size when the rows were last picked
 
         // Width of blocks[from..to), including the gaps between them.
         function rowWidth(blocks, from, to) {
@@ -1040,20 +1044,14 @@
           return best;
         }
 
-        // Dropping a top-level idea: the row is picked by where it was dropped
-        // (or a new row below the last), and its spot in that row by which
-        // trees it landed between. Returns a history detail, or null if
-        // nothing changed.
-        function moveRootByPosition(d, x, y) {
-          if (!layoutRows.length) return null;
-          var rowsIds = layoutRows.map(function (row) { return row.ids.slice(); });
-          var found = false;
-          rowsIds.forEach(function (ids) {
-            var k = ids.indexOf(d.id);
-            if (k !== -1) { ids.splice(k, 1); found = true; }
+        // The current rows (as lists of tree ids), with tree `id` taken out of
+        // wherever it is and put at canvas point (x, y) instead: the row is
+        // picked by height (or a new row below the last), and the spot in
+        // that row by which trees it lands between.
+        function rowsWithTreeAt(id, x, y) {
+          var rowsIds = layoutRows.map(function (row) {
+            return row.ids.filter(function (other) { return other !== id; });
           });
-          if (!found) return null;
-
           var target = layoutRows.length; // past the last row: a new row
           for (var r = 0; r < layoutRows.length; r++) {
             var edge = r + 1 < layoutRows.length
@@ -1063,9 +1061,39 @@
           }
           if (target === rowsIds.length) rowsIds.push([]);
           var row = rowsIds[target];
-          var at = row.filter(function (id) { return byId[id] && byId[id].tx < x; }).length;
-          row.splice(at, 0, d.id);
-          rowsIds = rowsIds.filter(function (ids) { return ids.length; });
+          var at = row.filter(function (other) { return byId[other] && byId[other].tx < x; }).length;
+          row.splice(at, 0, id);
+          return rowsIds.filter(function (ids) { return ids.length; });
+        }
+
+        function rowOfFrom(rowsIds) {
+          var map = {};
+          rowsIds.forEach(function (ids, i) { ids.forEach(function (id) { map[id] = i; }); });
+          return map;
+        }
+
+        // Where a new top-level idea should go, given where you tapped (in
+        // canvas coordinates): slots it into the rows at that spot, and has
+        // its node start out right there.
+        var spawnAt = {};
+        function placeNewRoot(idea, point) {
+          if (!point || !layoutRows.length) { roots.push(idea); return; }
+          var rowsIds = rowsWithTreeAt(idea.id, point[0], point[1]);
+          var byIdea = {};
+          roots.forEach(function (other) { byIdea[other.id] = other; });
+          byIdea[idea.id] = idea;
+          roots = [].concat.apply([], rowsIds).map(function (id) { return byIdea[id]; });
+          rowOf = rowOfFrom(rowsIds);
+          spawnAt[idea.id] = point;
+        }
+
+        // Dropping a top-level idea: the row is picked by where it was dropped
+        // (or a new row below the last), and its spot in that row by which
+        // trees it landed between. Returns a history detail, or null if
+        // nothing changed.
+        function moveRootByPosition(d, x, y) {
+          if (!layoutRows.length || rowOf[d.id] === undefined) return null;
+          var rowsIds = rowsWithTreeAt(d.id, x, y);
 
           var order = [].concat.apply([], rowsIds);
           var newRowOf = {};
@@ -1078,7 +1106,7 @@
           roots.forEach(function (idea) { byIdea[idea.id] = idea; });
           roots = order.map(function (id) { return byIdea[id]; });
           rowOf = newRowOf;
-          if (rowsChanged) { manualRows = true; manualSize = { w: width, h: height }; }
+          if (rowsChanged) { manualRows = true; rowsSize = { w: width, h: height }; }
 
           var mine = rowsIds[newRowOf[d.id]], k2 = mine.indexOf(d.id);
           var neighborId = k2 > 0 ? mine[k2 - 1] : mine[k2 + 1];
@@ -1474,14 +1502,22 @@
             });
             bounds = { minX: minX, maxX: maxX, maxY: top - ROW_GAP_Y };
 
-            // New nodes start beside their parent so the tree visibly grows out of it.
+            // New nodes start beside their parent so the tree visibly grows out
+            // of it -- or, for a new top-level idea, right where you tapped.
             nodes.forEach(function (node) {
               if (!node.fresh) return;
               var p = node.parentId ? next[node.parentId] : null;
-              node.x = (p ? p.x : node.tx) + jitter(p ? 16 : 40);
-              node.y = (p ? p.y : node.ty - 40) + jitter(p ? 16 : 10);
+              var spawn = spawnAt[node.id];
+              if (spawn) {
+                node.x = spawn[0];
+                node.y = spawn[1];
+              } else {
+                node.x = (p ? p.x : node.tx) + jitter(p ? 16 : 40);
+                node.y = (p ? p.y : node.ty - 40) + jitter(p ? 16 : 10);
+              }
               delete node.fresh;
             });
+            spawnAt = {};
           }
 
           sim.nodes(nodes);
@@ -1582,7 +1618,12 @@
 
         return {
           update: update,
-          fit: function () { userMoved = false; fit(true); }
+          fit: function () { userMoved = false; fit(true); },
+          // A tap's position in canvas coordinates (accounting for pan/zoom).
+          canvasPoint: function (e) {
+            return (e && typeof e.clientX === "number") ? d3.pointer(e, viewport.node()) : null;
+          },
+          placeNewRoot: placeNewRoot
         };
       })();
 
@@ -2152,14 +2193,16 @@
       });
 
       /* ---------- what a tap on the canvas does ---------- */
-      interactions.onBackgroundTap = function () {
+      interactions.onBackgroundTap = function (e) {
+        // Remembered now, so the new idea lands roughly where you tapped.
+        var point = forest.canvasPoint(e);
         openModal({
           title: "New idea",
           placeholder: "What’s the idea?",
           buttonText: "Add",
           onSubmit: function (text) {
             var idea = { id: uid(), text: text, children: [] };
-            roots.push(idea);
+            forest.placeNewRoot(idea, point);
             commit("add-idea", { text: idea.text });
           }
         });
