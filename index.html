@@ -897,6 +897,32 @@
         });
       }
 
+      // Versions of an idea form a chain: each one is a revision of the one
+      // before it (idea.versionOf), and the last is the one in play. This
+      // returns that chain, oldest first, from among the ideas an idea sits
+      // beside -- its fellow top-level ideas, or its parent's criticisms.
+      function versionsBeside(idea) {
+        var siblings = roots.indexOf(idea) !== -1 ? roots : (parentsOf(idea.id)[0] || { children: [] }).children;
+        var byId = {};
+        siblings.forEach(function (other) { byId[other.id] = other; });
+        var oldest = idea, seen = {};
+        while (oldest.versionOf && byId[oldest.versionOf] && !seen[oldest.id]) {
+          seen[oldest.id] = true;
+          oldest = byId[oldest.versionOf];
+        }
+        var chain = [oldest], guard = {};
+        for (;;) {
+          var current = chain[chain.length - 1];
+          if (guard[current.id]) break;
+          guard[current.id] = true;
+          var next = null;
+          siblings.forEach(function (other) { if (other.versionOf === current.id && !next) next = other; });
+          if (!next) break;
+          chain.push(next);
+        }
+        return chain;
+      }
+
       /* ---------- saved shape ---------- */
       // Ideas are saved flat -- every idea once, plus the parent-to-child
       // edges between them -- because a shared idea can't be written twice
@@ -910,6 +936,7 @@
             var node = { id: idea.id, text: idea.text };
             if (typeof idea.row === "number") node.row = idea.row;
             if (typeof idea.versionOf === "string") node.versionOf = idea.versionOf;
+            if (idea.auto) node.auto = true;
             nodes.push(node);
             idea.children.forEach(function (child) { edges.push([idea.id, child.id]); });
             visit(idea.children);
@@ -924,6 +951,7 @@
           var idea = { id: node.id, text: node.text, children: [] };
           if (typeof node.row === "number") idea.row = node.row;
           if (typeof node.versionOf === "string") idea.versionOf = node.versionOf;
+          if (node.auto) idea.auto = true;
           byId[idea.id] = idea;
         });
         (graph && graph.edges ? graph.edges : []).forEach(function (edge) {
@@ -952,6 +980,7 @@
           var kept = { id: node.id, text: node.text };
           if (typeof node.row === "number") kept.row = node.row;
           if (typeof node.versionOf === "string") kept.versionOf = node.versionOf;
+          if (node.auto) kept.auto = true;
           byId[node.id] = kept;
           nodes.push(kept);
         });
@@ -2624,7 +2653,16 @@
       // against it, so the old version stops being adoptable by the ordinary
       // rule rather than by a special case.
       function reviseIdea(target) {
-        var kids = target.children.slice();
+        // A "superseded" note is about the one version it was filed against,
+        // so it isn't offered for carrying over to the new one.
+        var kids = target.children.filter(function (child) { return !child.auto; });
+        // Versions run in one line, so a revision always joins the end of the
+        // chain -- revising an older version brings it back as the newest one
+        // rather than branching off it.
+        var chain = versionsBeside(target);
+        var live = chain[chain.length - 1];
+        var restoring = live !== target;
+
         var checks = [];
         if (kids.length) {
           checks.push({ head: kids.length === 1 ? "Does this criticism still apply?" : "Which criticisms still apply?" });
@@ -2633,9 +2671,11 @@
           });
         }
         checks.push({
-          head: "This version",
+          head: restoring ? "The version in play" : "This version",
           key: SUPERSEDE_KEY,
-          label: "The revision supersedes it",
+          label: restoring
+            ? "The revision supersedes “" + preview(live.text, 40) + "”"
+            : "The revision supersedes it",
           note: "Files a criticism saying so, so it stops being adoptable.",
           checked: true
         });
@@ -2648,22 +2688,20 @@
           buttonText: "Revise",
           checks: checks,
           onSubmit: function (text, ticked) {
-            var revision = { id: uid(), text: text, children: [], versionOf: target.id };
+            var revision = { id: uid(), text: text, children: [], versionOf: live.id };
             kids.forEach(function (child) {
               if (ticked.indexOf(child.id) !== -1) revision.children.push(child);
             });
-            // The new version hangs from everything the old one hangs from,
-            // right beside it.
-            var parents = parentsOf(target.id);
-            parents.forEach(function (parent) {
-              var at = parent.children.indexOf(target);
-              parent.children.splice(at + 1, 0, revision);
+            // The new version hangs from everything the chain hangs from,
+            // at the end of it.
+            parentsOf(live.id).forEach(function (parent) {
+              parent.children.splice(parent.children.indexOf(live) + 1, 0, revision);
             });
-            var atRoot = roots.indexOf(target);
+            var atRoot = roots.indexOf(live);
             if (atRoot !== -1) roots.splice(atRoot + 1, 0, revision);
             var supersedes = ticked.indexOf(SUPERSEDE_KEY) !== -1;
             if (supersedes) {
-              target.children.push({ id: uid(), text: SUPERSEDED_TEXT, children: [] });
+              live.children.push({ id: uid(), text: SUPERSEDED_TEXT, children: [], auto: true });
             }
             commit("revise", { text: text, ofText: target.text, supersedes: supersedes });
           }
