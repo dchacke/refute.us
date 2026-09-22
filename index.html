@@ -19,11 +19,11 @@
     --button-fg: #0d1220;
     --focus: #c9b184;
     /* the canvas is dark in both themes, so these stay the same */
-    --link: rgba(232, 235, 240, 0.32);
+    --link: rgba(232, 235, 240, 0.6);
     --node-root: #d4b982;
     --node-crit: #ff5a52;
     --label: #e6e9f0;
-    --label-dim: #9aa3bc;
+    --label-dim: rgba(230, 233, 240, 0.8);
     --tip-bg: #e8ebf0;
     --tip-fg: #1b2233;
     --tip-muted: #566078;
@@ -97,8 +97,8 @@
      the parent" cue both live on the brighter dash riding on top of it
      (below), rather than on the edge itself. */
   .forest .link.is-adoptable {
-    stroke: var(--node-crit);
-    opacity: 0.85;
+    stroke: color-mix(in srgb, var(--node-crit) 85%, white);
+    opacity: 1;
   }
 
   .forest .link-flow {
@@ -153,24 +153,35 @@
 
   /* A solid disc reads as slightly smaller than a same-radius outline circle
      (a common optical effect), so nudge it up a touch to compensate. The
-     border also matches the fill here (rather than the background), so
-     there's no dark seam between the disc and its glow. */
+     rim is a darker shade of the same color (rather than matching the fill
+     exactly) for a touch of definition. */
   .forest .node.is-adoptable circle.core {
-    stroke: var(--node-crit);
+    stroke: color-mix(in srgb, var(--node-crit) 65%, black);
+    stroke-width: 2px;
     transform: scale(1);
     transform-box: fill-box;
     transform-origin: center;
   }
 
   .forest .node.is-root circle.core { fill: var(--node-root); }
-  .forest .node.is-root.is-adoptable circle.core { stroke: var(--node-root); }
+  .forest .node.is-root.is-adoptable circle.core { stroke: color-mix(in srgb, var(--node-root) 65%, black); }
 
+  /* Hollow (not rationally adoptable) discs keep the plain, full-brightness
+     color for their outline rather than the darker rim above -- with no
+     fill of their own to set them off, a darkened stroke read as barely
+     visible against the dark canvas background. */
   .forest .node:not(.is-adoptable) circle.core {
     fill: var(--right);
     stroke: var(--node-crit);
+    stroke-width: 2px;
   }
 
   .forest .node.is-root:not(.is-adoptable) circle.core { stroke: var(--node-root); }
+
+  /* A small, tight "lift" shadow under every node, independent of (and
+     layered under) the pulsing adopt-glow, which stays scoped to
+     circle.core alone. */
+  .forest .node { filter: drop-shadow(0 1.5px 2px rgba(0, 0, 0, 0.35)); }
 
   .forest .node.is-highlighted circle.core,
   .forest .node.is-root.is-highlighted circle.core {
