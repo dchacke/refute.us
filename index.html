@@ -503,6 +503,13 @@
     pointer-events: auto;
     cursor: pointer;
     transition: border-color 150ms ease;
+    /* Same fix as .timeline-slider: a drag that starts on a tick (rather
+       than the thumb itself) needs the browser to hand the whole gesture to
+       our own pointer handling instead of partly reading a non-horizontal
+       finger movement as a page scroll. Ticks are small and easy to land a
+       thumb on first, so without this the bug was still reachable through
+       them even after the slider itself was fixed. */
+    touch-action: none;
   }
 
   .timeline-tick.is-active {
