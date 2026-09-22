@@ -1719,6 +1719,12 @@
         var hasEnvelope = !!(raw && typeof raw.version === "number");
         var version = hasEnvelope ? raw.version : 0;
         var state = hasEnvelope ? raw.state : raw;
+        // Data written by a newer version of this page (a stale tab, or a
+        // rollback to an older build) can't be read backwards -- say so and
+        // leave it alone, rather than reading it as though it were current
+        // and saving over it in the older shape. Going forward again is a new
+        // migration, never a downgrade.
+        if (version > CURRENT_VERSION) throw new Error("Saved data is from a newer version of this page");
         while (version < CURRENT_VERSION) {
           version += 1;
           var migrate = MIGRATIONS[version];
