@@ -1151,7 +1151,11 @@
               if (!seen[child.id]) { seen[child.id] = true; union.push(child); }
             });
           });
-          var childGroups = groupSiblings(union);
+          // An idea that is somehow both a version and a criticism of the same
+          // idea would otherwise be laid out inside itself.
+          var childGroups = groupSiblings(union).filter(function (group) {
+            return !group.members.some(function (child) { return members.indexOf(child) !== -1; });
+          });
           childGroups.forEach(function (group) {
             group.owners = [];
             members.forEach(function (member, i) {
@@ -1210,6 +1214,7 @@
         var shownManual = false;      // whether the rows shown are ones you arranged yourself
         var layoutRows = [];          // [{ ids, top, bottom }] from the last layout, for drops
         var groupMembers = {};        // first version's id -> every version's id, in order
+        var groupLeader = {};         // any version's id -> the id its group is listed under
 
         // Width of blocks[from..to), including the gaps between them.
         function rowWidth(blocks, from, to) {
@@ -1324,6 +1329,9 @@
         // picked by height (or a new row below the last), and the spot in
         // that row by which trees it lands between.
         function rowsWithTreeAt(id, x, y) {
+          // Rows list one entry per version group, so a drag of any version
+          // is a drag of the group it belongs to.
+          id = groupLeader[id] || id;
           var rowsIds = layoutRows.map(function (row) {
             return row.ids.filter(function (other) { return other !== id; });
           });
@@ -1340,13 +1348,18 @@
           row.splice(at, 0, id);
           // Rows are kept as one entry per version group; from here on the
           // whole group travels together.
+          var seen = {};
           return rowsIds.filter(function (ids) { return ids.length; }).map(function (ids) {
             var full = [];
-            ids.forEach(function (memberId) {
-              (groupMembers[memberId] || [memberId]).forEach(function (id2) { full.push(id2); });
+            ids.forEach(function (leaderId) {
+              (groupMembers[leaderId] || [leaderId]).forEach(function (memberId) {
+                if (seen[memberId]) return;   // never list an idea twice
+                seen[memberId] = true;
+                full.push(memberId);
+              });
             });
             return full;
-          });
+          }).filter(function (ids) { return ids.length; });
         }
 
         // Where a new top-level idea should go, given where you tapped (in
@@ -1359,7 +1372,7 @@
           var byIdea = {};
           roots.forEach(function (other) { byIdea[other.id] = other; });
           byIdea[idea.id] = idea;
-          roots = [].concat.apply([], rowsIds).map(function (id) { return byIdea[id]; });
+          roots = [].concat.apply([], rowsIds).map(function (id) { return byIdea[id]; }).filter(Boolean);
           setManualRows(rowsIds);
           spawnAt[idea.id] = point;
         }
@@ -1381,7 +1394,7 @@
 
           var byIdea = {};
           roots.forEach(function (idea) { byIdea[idea.id] = idea; });
-          roots = order.map(function (id) { return byIdea[id]; });
+          roots = order.map(function (id) { return byIdea[id]; }).filter(Boolean);
           // Rows only count as arranged by you if a tree actually changed rows;
           // a reorder within a row just keeps whatever the rows already were.
           setManualRows(rowsIds, rowsChanged);
@@ -1704,9 +1717,11 @@
             var id = idea.id;
             var node = next[id];
             if (node) {
-              node.parentIds.push(parentId);
+              if (parentId) {
+                node.parentIds.push(parentId);
+                links.push({ source: parentId, target: id });
+              }
               if (depth > node.depth) node.depth = depth;
-              links.push({ source: parentId, target: id });
               return;
             }
             node = byId[id] || { id: id, fresh: true };
@@ -1742,6 +1757,7 @@
           layoutRows = [];
           rowOf = {};
           groupMembers = {};
+          groupLeader = {};
           if (nodes.length) {
             // Every other criticism on a row is nudged down a little, so its
             // text preview lands in the gap between its neighbours' previews
@@ -1759,6 +1775,7 @@
               });
               var ids = group.members.map(function (member) { return member.id; });
               groupMembers[group.members[0].id] = ids;
+              ids.forEach(function (id) { groupLeader[id] = group.members[0].id; });
               return {
                 idea: group.members[0],
                 ids: ids,
