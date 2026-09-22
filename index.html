@@ -1066,7 +1066,7 @@
         // both -- a group of one is just a node.
         var LEAF_HALF = X_GAP / 2;     // room a childless idea takes to its own side
         var BLOCK_GAP = 10;            // extra room between two neighbouring subtrees
-        var MEMBER_GAP = 200;          // least room between two versions of one idea, titles included
+        var MEMBER_GAP = X_GAP + BLOCK_GAP; // versions sit as close as ordinary siblings do
 
         // Splits siblings into version groups, keeping the list's own order.
         function groupSiblings(list) {
@@ -1116,11 +1116,12 @@
           // Shared criticisms belong between the versions that share them.
           childGroups.sort(function (a, b) { return a.anchor - b.anchor; });
 
-          var pos = {}, cursor = 0;
+          var pos = {}, versionIndex = {}, cursor = 0;
           childGroups.forEach(function (group, i) {
             var block = buildBlock(group.members);
             var shift = (i === 0 ? 0 : cursor + BLOCK_GAP) - block.min;
             Object.keys(block.pos).forEach(function (id) { pos[id] = block.pos[id] + shift; });
+            Object.keys(block.versionIndex).forEach(function (id) { versionIndex[id] = block.versionIndex[id]; });
             group.center = block.memberXs.reduce(function (a, b) { return a + b; }, 0) / block.memberXs.length + shift;
             cursor = block.max + shift;
           });
@@ -1136,11 +1137,15 @@
             }
             if (i > 0 && memberXs[i] < memberXs[i - 1] + MEMBER_GAP) memberXs[i] = memberXs[i - 1] + MEMBER_GAP;
           }
-          members.forEach(function (member, i) { pos[member.id] = memberXs[i]; });
+          members.forEach(function (member, i) {
+            pos[member.id] = memberXs[i];
+            versionIndex[member.id] = i;
+          });
 
           var xs = Object.keys(pos).map(function (id) { return pos[id]; });
           return {
             pos: pos,
+            versionIndex: versionIndex,
             memberXs: memberXs,
             min: Math.min.apply(null, xs) - LEAF_HALF,
             max: Math.max.apply(null, xs) + LEAF_HALF
@@ -1728,6 +1733,7 @@
                 idea: group.members[0],
                 ids: ids,
                 pos: block.pos,
+                versionIndex: block.versionIndex,
                 lo: block.min,
                 w: block.max - block.min,
                 h: maxDepth * Y_GAP + ALT_Y
@@ -1745,7 +1751,11 @@
                 Object.keys(b.pos).forEach(function (id) {
                   var node = next[id];
                   if (!node) return;
-                  var altY = (node.depth > 0 && node.rank % 2 === 1) ? ALT_Y : 0;
+                  // Every other criticism on a row is nudged down; so is every
+                  // other version of an idea, which sit as close together as
+                  // siblings do.
+                  var stagger = node.depth > 0 ? node.rank : (b.versionIndex[id] || 0);
+                  var altY = stagger % 2 === 1 ? ALT_Y : 0;
                   node.tx = offsetX + b.pos[id];
                   node.ty = top + node.depth * Y_GAP + altY;
                   if (node.tx < minX) minX = node.tx;
