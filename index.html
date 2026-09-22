@@ -94,31 +94,32 @@
 
   /* An edge pointing at a rationally adoptable criticism picks up that node's
      color. It stays a plain solid line -- the glow and the "flowing toward
-     the parent" cue both live on the brighter dash riding on top of it
+     the parent" cue both live on the moving glow riding on top of it
      (below), rather than on the edge itself. */
   .forest .link.is-adoptable {
     stroke: color-mix(in srgb, var(--node-crit) 85%, white);
     opacity: 1;
   }
 
+  /* Matches the edge's own color exactly, so the moving shape reads as a
+     faint glow traveling along the edge toward the parent, rather than a
+     distinct marker riding on top of it. It's a filled shape computed in JS
+     (see flowPolygon), tapered down to the edge's own 1.5px width at each
+     end so it blends into the edge's outline instead of cutting off against
+     it -- at this size and opacity that taper mostly reads as a soft
+     brightening rather than a visibly separate shape, which is the effect
+     we want. */
   .forest .link-flow {
-    fill: none;
-    stroke: color-mix(in srgb, var(--node-crit) 65%, black);
-    stroke-width: 3px;
-    stroke-linecap: round;
-    stroke-dasharray: 4 14;
+    fill: color-mix(in srgb, var(--node-crit) 85%, white);
+    stroke: none;
     opacity: 0.9;
     pointer-events: none;
   }
 
   @media (prefers-reduced-motion: no-preference) {
     .forest .link-flow {
-      animation: flow-to-parent 1.1s linear infinite, adopt-glow 2.6s ease-in-out infinite;
+      animation: adopt-glow 2.6s ease-in-out infinite;
     }
-  }
-
-  @keyframes flow-to-parent {
-    to { stroke-dashoffset: 18; }
   }
 
   .forest .node { cursor: grab; }
@@ -938,10 +939,83 @@
           return "M" + sx + "," + sy + "C" + sx + "," + my + " " + tx + "," + my + " " + tx + "," + ty;
         }
 
+        // Same cubic bezier as linkPath (P0 = source, P1 = (sx,my), P2 = (tx,my),
+        // P3 = target), sampled at parameter t.
+        function bezierPoint(d, t) {
+          var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y, my = (sy + ty) / 2;
+          var mt = 1 - t;
+          return {
+            x: sx * (mt * mt * mt + 3 * mt * mt * t) + tx * (3 * mt * t * t + t * t * t),
+            y: sy * mt * mt * mt + 3 * my * mt * mt * t + 3 * my * mt * t * t + ty * t * t * t
+          };
+        }
+
+        // Unit tangent of the same curve at t, used to find the perpendicular
+        // (normal) direction to offset the flow shape's edges from the curve.
+        function bezierTangent(d, t) {
+          var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y, mt = 1 - t;
+          var dx = 6 * mt * t * (tx - sx);
+          var dy = 1.5 * (ty - sy) * (mt * mt + t * t);
+          if (!dx && !dy) return { x: 0, y: 1 };
+          var len = Math.sqrt(dx * dx + dy * dy);
+          return { x: dx / len, y: dy / len };
+        }
+
+        var FLOW_WIDTH_BASE = 0.75; // half of the edge's own 1.5px stroke-width, matched at each end
+        var FLOW_BULGE = 1.5;       // half-width at the shape's center
+        var FLOW_HALF_T = 0.09;     // how far the taper reaches along the curve, each side of center
+        var FLOW_SAMPLES = 8;       // points sampled per side of the taper
+
+        // A filled "lens" shape straddling parameter tc along the link's own
+        // curve. Its half-width follows a cosine taper from FLOW_BULGE at the
+        // center down to FLOW_WIDTH_BASE at each end -- since FLOW_WIDTH_BASE
+        // equals the edge's own half stroke-width, the shape's outline lines
+        // up exactly with the edge's outline there instead of cutting off
+        // against it, with no blur needed to soften the seam. At this small a
+        // scale the tapered shape itself isn't really visible -- what actually
+        // reads on screen is a faint glow traveling along the edge, which is
+        // the effect we're going for.
+        function flowPolygon(d, tc) {
+          var top = [], bottom = [];
+          for (var i = 0; i <= FLOW_SAMPLES; i++) {
+            var s = -1 + (2 * i) / FLOW_SAMPLES;
+            var t = Math.max(0, Math.min(1, tc + s * FLOW_HALF_T));
+            var p = bezierPoint(d, t);
+            var tan = bezierTangent(d, t);
+            var nx = -tan.y, ny = tan.x;
+            var hw = (FLOW_WIDTH_BASE + (FLOW_BULGE - FLOW_WIDTH_BASE) * Math.cos(s * Math.PI / 2)) / 2;
+            top.push((p.x + nx * hw) + "," + (p.y + ny * hw));
+            bottom.push((p.x - nx * hw) + "," + (p.y - ny * hw));
+          }
+          bottom.reverse();
+          return "M" + top.join("L") + "L" + bottom.join("L") + "Z";
+        }
+
+        var flowStart = Date.now();
+        var FLOW_PERIOD = 1300; // ms for one shape to travel from child to parent
+
+        // Runs on its own timer (not just simulation ticks, which stop once the
+        // layout settles) so the flow keeps moving toward the parent even when
+        // nothing else on the canvas is animating. Draws two shapes per edge,
+        // half a period apart, for a continuous stream rather than one pulse
+        // chasing an empty gap.
+        function updateFlowShapes() {
+          if (reduceMotion) {
+            linkFlowSel.attr("d", function (d) { return flowPolygon(d, 0.5); });
+            return;
+          }
+          var elapsed = Date.now() - flowStart;
+          var phase1 = (elapsed % FLOW_PERIOD) / FLOW_PERIOD;
+          var phase2 = ((elapsed + FLOW_PERIOD / 2) % FLOW_PERIOD) / FLOW_PERIOD;
+          linkFlowSel.attr("d", function (d) {
+            return flowPolygon(d, 1 - phase1) + " " + flowPolygon(d, 1 - phase2);
+          });
+        }
+
         function draw() {
           // Links leave a parent downward and arrive at the child from above.
           linkSel.attr("d", linkPath);
-          linkFlowSel.attr("d", linkPath);
+          updateFlowShapes();
           nodeSel.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
         }
 
@@ -955,6 +1029,12 @@
           .force("y", d3.forceY(function (d) { return d.ty; }).strength(0.6))
           .alphaDecay(0.04)
           .on("tick", draw);
+
+        // Keeps the "flowing toward parent" shapes moving on their own clock --
+        // sim's tick handler above only fires while the force layout is
+        // actively settling, but the flow should keep traveling even once it's
+        // at rest.
+        if (!reduceMotion) d3.timer(updateFlowShapes);
 
         // With reduced motion the layout is computed up front instead of animating.
         function reheat(alpha) {
