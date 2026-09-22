@@ -1019,6 +1019,8 @@
         // Dragging an idea left/right past a sibling (top-level or criticism)
         // reorders them for real (persisted, undoable like any other change);
         // vertical movement (between levels) just springs back on release.
+        // Returns a detail object describing the move (for the history entry)
+        // when the drop actually changed the order, or null if it didn't.
         function reorderSiblingsByPosition(d) {
           var list = d.parentId ? findIdea(d.parentId).children : roots;
           var order = Object.keys(byId)
@@ -1027,13 +1029,29 @@
             .sort(function (a, b) { return a.x - b.x; })
             .map(function (n) { return n.id; });
           var currentOrder = list.map(function (r) { return r.id; });
-          if (order.join() === currentOrder.join()) return false;
+          if (order.join() === currentOrder.join()) return null;
           var byIdea = {};
           list.forEach(function (r) { byIdea[r.id] = r; });
           var reordered = order.map(function (id) { return byIdea[id]; });
+          // Figure out which neighbor the dragged idea ended up next to, so
+          // the history entry can name both ideas involved rather than just
+          // saying "something moved". With only two siblings trading places
+          // at a time (the drag-past-a-sibling gesture the legend describes),
+          // that neighbor is whichever one now sits on the side it arrived
+          // from -- the one right before it if it moved forward, or right
+          // after it if it moved backward.
+          var oldIndex = currentOrder.indexOf(d.id);
+          var newIndex = order.indexOf(d.id);
+          var movedForward = newIndex > oldIndex;
+          var neighborId = movedForward ? order[newIndex - 1] : order[newIndex + 1];
+          var neighbor = neighborId ? byIdea[neighborId] : null;
           if (d.parentId) { findIdea(d.parentId).children = reordered; }
           else { roots = reordered; }
-          return true;
+          return {
+            text: d.text,
+            neighborText: neighbor ? neighbor.text : null,
+            placement: movedForward ? "after" : "before"
+          };
         }
 
         var drag = d3.drag()
@@ -1048,9 +1066,8 @@
             if (!e.active) sim.alphaTarget(0);
             d.fx = null; d.fy = null;
             svg.classed("is-dragging", false);
-            if (reorderSiblingsByPosition(d)) {
-              commit("reorder", {});
-            }
+            var moveDetail = reorderSiblingsByPosition(d);
+            if (moveDetail) commit("reorder", moveDetail);
           });
 
         /* tooltip */
@@ -1422,7 +1439,7 @@
             return "Deleted “" + preview(d.text || "", 24) + "”" +
               (d.count > 0 ? " (+" + d.count + (d.count === 1 ? " criticism)" : " criticisms)") : "");
           case "reorder":
-            return "Reordered ideas";
+            return "Moved “" + preview(d.text || "", 20) + "” " + d.placement + " “" + preview(d.neighborText || "", 20) + "”";
           default:
             return entry.summary || "Event";
         }
@@ -1802,6 +1819,15 @@
       interactions.onNodeTap = function (e, d) {
         var target = findIdea(d.id);
         if (!target) return;
+        // Shift+click deletes immediately, skipping the confirmation dialog --
+        // an accelerator for people who know what they're doing (e.g. during
+        // a live demo) and don't want a modal in the way each time.
+        if (e.shiftKey) {
+          var n = countDescendants(target);
+          removeIdea(d.id);
+          commit("delete", { text: d.text, count: n });
+          return;
+        }
         openModal({
           title: "Submit a criticism",
           quote: target.text,
@@ -1819,6 +1845,12 @@
         var target = findIdea(d.id);
         if (!target) return;
         var n = countDescendants(target);
+        // Shift+long-press also skips the confirmation, same as shift+click.
+        if (e.shiftKey) {
+          removeIdea(d.id);
+          commit("delete", { text: d.text, count: n });
+          return;
+        }
         var message = "Are you sure you want to delete “" + preview(d.text, 32) + "”" +
           (n > 0 ? " and its " + n + (n === 1 ? " criticism" : " criticisms") : "") + "?";
         openModal({
