@@ -770,6 +770,15 @@
       var STORAGE_KEY = "ideas";       // legacy key, read only, for migration
       var HISTORY_KEY = "ideas-history-v1";
       var roots = []; // each idea: { id: string, text: string, children: [idea, ...] }
+      // How the current point in history's rows were arranged -- see the
+      // "rows of trees" section. { manual: whether you arranged them
+      // yourself, w/h: the pane size at the time }, or null. Top-level
+      // ideas carry their own saved row as idea.row.
+      var rowsMeta = null;
+      function copyRowsMeta(m) {
+        return (m && typeof m === "object" && typeof m.w === "number" && typeof m.h === "number")
+          ? { manual: !!m.manual, w: m.w, h: m.h } : null;
+      }
 
       function uid() {
         return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -890,7 +899,8 @@
         if (!d3) return {
           update: function () {}, fit: function () {},
           canvasPoint: function () { return null; },
-          placeNewRoot: function (idea) { roots.push(idea); }
+          placeNewRoot: function (idea) { roots.push(idea); },
+          shownRows: function () { return null; }
         };
 
         // Layout units: horizontal room per node, vertical distance between levels, top margin.
@@ -933,17 +943,18 @@
 
         /* ---------- rows of trees ---------- */
         // Trees are laid out like words in a paragraph: in their top-level
-        // order, left to right, wrapping into rows. How many rows is picked to
-        // make the best use of the pane's shape, and once picked, rows are
-        // "sticky" -- a tree stays in its row until something meaningfully
-        // changes (the pane is resized a lot, or trees are added or removed),
-        // so unrelated trees don't jump around.
+        // order, left to right, wrapping into rows. Each point in history
+        // saves which row every tree was in (idea.row) along with rowsMeta
+        // (whether you arranged them yourself, and at what pane size), so
+        // what's shown depends only on that saved state and the current
+        // pane -- never on how you got there. Saved rows are shown as long
+        // as they still fit the pane reasonably well; otherwise the trees
+        // are rebalanced for the current pane.
         var TREE_GAP_X = 2.2 * X_GAP; // same room between trees as before
         var ROW_GAP_Y = 100;          // room for one row's previews and the next row's titles
-        var rowOf = {};               // tree (root idea id) -> row index, from the last layout
+        var rowOf = {};               // tree (root idea id) -> row shown in the last layout
+        var shownManual = false;      // whether the rows shown are ones you arranged yourself
         var layoutRows = [];          // [{ ids, top, bottom }] from the last layout, for drops
-        var manualRows = false;       // true once you've dragged a tree into another row yourself
-        var rowsSize = null;          // pane size when the rows were last picked
 
         // Width of blocks[from..to), including the gaps between them.
         function rowWidth(blocks, from, to) {
@@ -1013,35 +1024,44 @@
             }
           }
 
-          // The last layout's rows, if they still apply: every known tree keeps
-          // its row (new ones join the last row), and rows still read in order.
-          var kept = [], lastRow = -1, newcomers = false;
-          for (var i = 0; i < blocks.length && kept; i++) {
-            var r = rowOf[blocks[i].idea.id];
-            if (r === undefined) { r = Math.max(lastRow, 0); newcomers = true; }
-            if (r < lastRow) { kept = null; break; }
-            if (r > lastRow) { kept.push(0); lastRow = r; }
-            kept[kept.length - 1] += 1;
+          // The rows saved with this point in history, if any: a tree
+          // without a saved row joins the row of the tree before it, and rows
+          // have to read in order.
+          var saved = [], lastRow = -1, anySaved = false;
+          for (var i = 0; i < blocks.length; i++) {
+            var r = blocks[i].idea.row;
+            if (typeof r === "number") anySaved = true;
+            else r = Math.max(lastRow, 0);
+            if (r < lastRow) { saved = null; break; }
+            if (r > lastRow) { saved.push(0); lastRow = r; }
+            saved[saved.length - 1] += 1;
           }
-          // Start over from the best fit when there's nothing to keep, or the
-          // pane has changed size a lot since the rows were picked -- which
-          // includes the first real measurement on page load.
-          var resized = !rowsSize ||
-            Math.abs(width - rowsSize.w) > rowsSize.w * 0.2 ||
-            Math.abs(height - rowsSize.h) > rowsSize.h * 0.2;
-          if (!kept || resized) {
-            manualRows = false;
-            rowsSize = { w: width, h: height };
-            return best;
-          }
+          if (!saved || !anySaved) { shownManual = false; return best; }
 
-          // Otherwise, rows you arranged yourself are kept until trees are
-          // added; automatic ones only until they're noticeably worse than
-          // the best fit.
-          if (newcomers) manualRows = false;
-          if (manualRows || rowsScale(blocks, kept) >= bestScale * 0.85) return kept;
-          rowsSize = { w: width, h: height };
+          // Rows you arranged yourself are shown as-is while the pane is
+          // about the size it was then; otherwise saved rows are shown only
+          // while they're not noticeably worse than the best fit.
+          var meta = rowsMeta || {};
+          var sameSize = meta.w > 0 && meta.h > 0 &&
+            Math.abs(width - meta.w) <= meta.w * 0.2 &&
+            Math.abs(height - meta.h) <= meta.h * 0.2;
+          if ((meta.manual && sameSize) || rowsScale(blocks, saved) >= bestScale * 0.85) {
+            shownManual = !!meta.manual;
+            return saved;
+          }
+          shownManual = false;
           return best;
+        }
+
+        // Rows you've just arranged (by dragging a tree, or tapping to add one
+        // at a spot): saved onto the ideas themselves -- marked as yours if
+        // `manual`, or else just recording the rows as currently shown.
+        function setManualRows(rowsIds, manual) {
+          var byIdea = {};
+          roots.forEach(function (idea) { byIdea[idea.id] = idea; });
+          roots.forEach(function (idea) { delete idea.row; });
+          rowsIds.forEach(function (ids, r) { ids.forEach(function (id) { if (byIdea[id]) byIdea[id].row = r; }); });
+          rowsMeta = { manual: manual !== false || !!(rowsMeta && rowsMeta.manual), w: width, h: height };
         }
 
         // The current rows (as lists of tree ids), with tree `id` taken out of
@@ -1066,12 +1086,6 @@
           return rowsIds.filter(function (ids) { return ids.length; });
         }
 
-        function rowOfFrom(rowsIds) {
-          var map = {};
-          rowsIds.forEach(function (ids, i) { ids.forEach(function (id) { map[id] = i; }); });
-          return map;
-        }
-
         // Where a new top-level idea should go, given where you tapped (in
         // canvas coordinates): slots it into the rows at that spot, and has
         // its node start out right there.
@@ -1083,7 +1097,7 @@
           roots.forEach(function (other) { byIdea[other.id] = other; });
           byIdea[idea.id] = idea;
           roots = [].concat.apply([], rowsIds).map(function (id) { return byIdea[id]; });
-          rowOf = rowOfFrom(rowsIds);
+          setManualRows(rowsIds);
           spawnAt[idea.id] = point;
         }
 
@@ -1105,8 +1119,9 @@
           var byIdea = {};
           roots.forEach(function (idea) { byIdea[idea.id] = idea; });
           roots = order.map(function (id) { return byIdea[id]; });
-          rowOf = newRowOf;
-          if (rowsChanged) { manualRows = true; rowsSize = { w: width, h: height }; }
+          // Rows only count as arranged by you if a tree actually changed rows;
+          // a reorder within a row just keeps whatever the rows already were.
+          setManualRows(rowsIds, rowsChanged);
 
           var mine = rowsIds[newRowOf[d.id]], k2 = mine.indexOf(d.id);
           var neighborId = k2 > 0 ? mine[k2 - 1] : mine[k2 + 1];
@@ -1440,6 +1455,7 @@
 
           bounds = null;
           layoutRows = [];
+          rowOf = {};
           if (nodes.length) {
             // Every other criticism on a row is nudged down a little, so its
             // text preview lands in the gap between its neighbours' previews
@@ -1623,7 +1639,11 @@
           canvasPoint: function (e) {
             return (e && typeof e.clientX === "number") ? d3.pointer(e, viewport.node()) : null;
           },
-          placeNewRoot: placeNewRoot
+          placeNewRoot: placeNewRoot,
+          // The rows as currently shown, for saving with a new point in history.
+          shownRows: function () {
+            return { rowOf: rowOf, manual: shownManual, w: width, h: height };
+          }
         };
       })();
 
@@ -1634,6 +1654,7 @@
         if (x && typeof x.text === "string") {
           var kids = Array.isArray(x.children) ? x.children.map(normalize).filter(Boolean) : [];
           var idea = { id: (typeof x.id === "string" && x.id) ? x.id : uid(), text: x.text, children: kids };
+          if (typeof x.row === "number") idea.row = x.row;
           return idea;
         }
         return null;
@@ -1641,7 +1662,9 @@
 
       function cloneTree(list) {
         return list.map(function (n) {
-          return { id: n.id, text: n.text, children: cloneTree(n.children) };
+          var copy = { id: n.id, text: n.text, children: cloneTree(n.children) };
+          if (typeof n.row === "number") copy.row = n.row;
+          return copy;
         });
       }
 
@@ -1704,11 +1727,13 @@
                 // to it when `detail` is missing.
                 detail: (e.detail && typeof e.detail === "object") ? e.detail : null,
                 summary: typeof e.summary === "string" ? e.summary : null,
-                time: typeof e.time === "number" ? e.time : Date.now()
+                time: typeof e.time === "number" ? e.time : Date.now(),
+                rows: copyRowsMeta(e.rows)
               };
             });
             cursor = Math.min(Math.max(0, state.cursor | 0), history.length - 1);
             roots = cloneTree(history[cursor].snapshot);
+            rowsMeta = copyRowsMeta(history[cursor].rows);
             return;
           }
         } catch (err) {
@@ -1751,7 +1776,7 @@
       // at render time -- see summaryFor for why.
       function recordEvent(type, detail) {
         if (cursor < history.length - 1) history.length = cursor + 1;
-        history.push({ snapshot: cloneTree(roots), type: type, detail: detail || {}, time: Date.now() });
+        history.push({ snapshot: cloneTree(roots), type: type, detail: detail || {}, time: Date.now(), rows: copyRowsMeta(rowsMeta) });
         cursor = history.length - 1;
         saveHistory();
         updateTimelineUI();
@@ -1844,6 +1869,16 @@
       // point in the timeline (which also persists it).
       function commit(type, detail) {
         refresh();
+        // The new point in history saves the rows as they're now shown, so
+        // coming back to it later (at any pane size) starts from exactly this.
+        var shown = forest.shownRows();
+        if (shown) {
+          roots.forEach(function (idea) {
+            if (typeof shown.rowOf[idea.id] === "number") idea.row = shown.rowOf[idea.id];
+            else delete idea.row;
+          });
+          rowsMeta = { manual: shown.manual, w: shown.w, h: shown.h };
+        }
         recordEvent(type, detail);
       }
 
@@ -1852,6 +1887,7 @@
         if (index < 0 || index >= history.length) return;
         cursor = index;
         roots = cloneTree(history[index].snapshot);
+        rowsMeta = copyRowsMeta(history[index].rows);
         refresh();
         saveHistory();
         updateTimelineUI();
@@ -2281,6 +2317,7 @@
           danger: true,
           onSubmit: function () {
             roots = [];
+            rowsMeta = null;
             history = [{ snapshot: [], type: "start", detail: {}, time: Date.now() }];
             cursor = 0;
             try {
