@@ -1598,40 +1598,47 @@
         if (window.ResizeObserver) new ResizeObserver(resize).observe(pane);
         else window.addEventListener("resize", resize);
 
-        // Dragging an idea left/right past a sibling (top-level or criticism)
-        // reorders them for real (persisted, undoable like any other change);
-        // vertical movement (between levels) just springs back on release.
-        // Returns a detail object describing the move (for the history entry)
-        // when the drop actually changed the order, or null if it didn't.
+        // Dragging a criticism left/right past a sibling reorders them for
+        // real (persisted, undoable like any other change); vertical movement
+        // (between levels) just springs back on release. Versions of one idea
+        // count as a single sibling: they travel together, in the order they
+        // were written, and can't be shuffled among themselves. Returns a
+        // detail object describing the move (for the history entry) when the
+        // drop actually changed the order, or null if it didn't.
         function reorderSiblingsByPosition(d) {
-          var list = d.parentId ? findIdea(d.parentId).children : roots;
-          var order = Object.keys(byId)
-            .map(function (id) { return byId[id]; })
-            .filter(function (n) { return n.parentId === d.parentId && n.depth === d.depth; })
-            .sort(function (a, b) { return a.x - b.x; })
-            .map(function (n) { return n.id; });
-          var currentOrder = list.map(function (r) { return r.id; });
-          if (order.join() === currentOrder.join()) return null;
-          var byIdea = {};
-          list.forEach(function (r) { byIdea[r.id] = r; });
-          var reordered = order.map(function (id) { return byIdea[id]; });
-          // Figure out which neighbor the dragged idea ended up next to, so
-          // the history entry can name both ideas involved rather than just
-          // saying "something moved". With only two siblings trading places
-          // at a time (the drag-past-a-sibling gesture the legend describes),
-          // that neighbor is whichever one now sits on the side it arrived
-          // from -- the one right before it if it moved forward, or right
-          // after it if it moved backward.
-          var oldIndex = currentOrder.indexOf(d.id);
-          var newIndex = order.indexOf(d.id);
-          var movedForward = newIndex > oldIndex;
-          var neighborId = movedForward ? order[newIndex - 1] : order[newIndex + 1];
-          var neighbor = neighborId ? byIdea[neighborId] : null;
-          if (d.parentId) { findIdea(d.parentId).children = reordered; }
-          else { roots = reordered; }
+          var parent = d.parentId ? findIdea(d.parentId) : null;
+          var list = parent ? parent.children : roots;
+          var groups = groupSiblings(list);
+          var placed = groups.map(function (group, i) {
+            var xs = group.members
+              .map(function (member) { return byId[member.id]; })
+              .filter(Boolean)
+              .map(function (node) { return node.x; });
+            var x = xs.length ? xs.reduce(function (a, b) { return a + b; }, 0) / xs.length : 0;
+            return { group: group, was: i, x: x };
+          });
+          placed.sort(function (a, b) { return (a.x - b.x) || (a.was - b.was); });
+
+          var reordered = [];
+          placed.forEach(function (entry) {
+            entry.group.members.forEach(function (member) { reordered.push(member); });
+          });
+          var currentOrder = list.map(function (idea) { return idea.id; });
+          if (reordered.map(function (idea) { return idea.id; }).join() === currentOrder.join()) return null;
+
+          // Name the neighbour the dragged idea ended up beside, so the
+          // history entry can say what moved past what.
+          var mine = 0;
+          placed.forEach(function (entry, i) {
+            if (entry.group.members.some(function (member) { return member.id === d.id; })) mine = i;
+          });
+          var movedForward = placed[mine].was < mine;
+          var beside = placed[movedForward ? mine - 1 : mine + 1];
+          if (parent) parent.children = reordered;
+          else roots = reordered;
           return {
             text: d.text,
-            neighborText: neighbor ? neighbor.text : null,
+            neighborText: beside ? beside.group.members[0].text : null,
             placement: movedForward ? "after" : "before"
           };
         }
