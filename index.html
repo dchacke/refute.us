@@ -927,6 +927,168 @@
 
         function radius(d) { return 10; }
 
+        /* ---------- rows of trees ---------- */
+        // Trees are laid out like words in a paragraph: in their top-level
+        // order, left to right, wrapping into rows. How many rows is picked to
+        // make the best use of the pane's shape, and once picked, rows are
+        // "sticky" -- a tree stays in its row until something meaningfully
+        // changes (the pane is resized a lot, or trees are added or removed),
+        // so unrelated trees don't jump around.
+        var TREE_GAP_X = 2.2 * X_GAP; // same room between trees as before
+        var ROW_GAP_Y = 100;          // room for one row's previews and the next row's titles
+        var rowOf = {};               // tree (root idea id) -> row index, from the last layout
+        var layoutRows = [];          // [{ ids, top, bottom }] from the last layout, for drops
+        var manualRows = false;       // true once you've dragged a tree into another row yourself
+        var manualSize = null;        // pane size at that moment
+
+        // Width of blocks[from..to), including the gaps between them.
+        function rowWidth(blocks, from, to) {
+          var w = 0;
+          for (var i = from; i < to; i++) w += blocks[i].w;
+          return w + TREE_GAP_X * (to - from - 1);
+        }
+
+        // How far fit() could zoom in on a given split into rows (bigger is
+        // better), plus how far the result's shape is from the pane's own
+        // (0 = same proportions) -- the tie-breaker once several splits all
+        // reach fit()'s maximum zoom.
+        function rowsFit(blocks, counts) {
+          var i = 0, maxW = 0, totalH = 0;
+          counts.forEach(function (c, r) {
+            maxW = Math.max(maxW, rowWidth(blocks, i, i + c));
+            var h = 0;
+            for (var j = i; j < i + c; j++) h = Math.max(h, blocks[j].h);
+            totalH += h + (r > 0 ? ROW_GAP_Y : 0);
+            i += c;
+          });
+          var w = maxW + 160, h2 = totalH + 130;
+          return {
+            scale: Math.min(1.6, width / w, height / h2),
+            mismatch: Math.abs(Math.log((w / h2) / (width / height)))
+          };
+        }
+        function rowsScale(blocks, counts) { return rowsFit(blocks, counts).scale; }
+
+        // The most even split of the trees, in order, into k rows (keeps the
+        // widest row as narrow as possible). Returns how many trees per row.
+        function balancedCounts(blocks, k) {
+          var n = blocks.length, cost = [], cut = [], i, j, p;
+          for (j = 0; j <= k; j++) {
+            cost.push([]); cut.push([]);
+            for (i = 0; i <= n; i++) { cost[j].push(Infinity); cut[j].push(0); }
+          }
+          cost[0][0] = 0;
+          for (j = 1; j <= k; j++) {
+            for (i = j; i <= n; i++) {
+              for (p = j - 1; p < i; p++) {
+                var c = Math.max(cost[j - 1][p], rowWidth(blocks, p, i));
+                if (c < cost[j][i]) { cost[j][i] = c; cut[j][i] = p; }
+              }
+            }
+          }
+          var counts = [], end = n;
+          for (j = k; j >= 1; j--) { counts.unshift(end - cut[j][end]); end = cut[j][end]; }
+          return counts;
+        }
+
+        // Picks trees-per-row for this render.
+        function chooseRows(blocks) {
+          // Biggest zoom wins; among splits that zoom about as far (e.g. all
+          // at fit()'s maximum), the one shaped most like the pane wins, so a
+          // few small trees don't sit in one strip with the rest of the pane
+          // empty.
+          var best = null, bestScale = -1, bestMismatch = Infinity;
+          for (var k = 1; k <= blocks.length; k++) {
+            var counts = balancedCounts(blocks, k);
+            var f = rowsFit(blocks, counts);
+            if (f.scale > bestScale * 1.02 ||
+                (f.scale >= bestScale * 0.98 && f.mismatch < bestMismatch)) {
+              best = counts;
+              bestScale = Math.max(bestScale, f.scale);
+              bestMismatch = f.mismatch;
+            }
+          }
+
+          // The last layout's rows, if they still apply: every known tree keeps
+          // its row (new ones join the last row), and rows still read in order.
+          var kept = [], lastRow = -1, newcomers = false;
+          for (var i = 0; i < blocks.length && kept; i++) {
+            var r = rowOf[blocks[i].idea.id];
+            if (r === undefined) { r = Math.max(lastRow, 0); newcomers = true; }
+            if (r < lastRow) { kept = null; break; }
+            if (r > lastRow) { kept.push(0); lastRow = r; }
+            kept[kept.length - 1] += 1;
+          }
+          // Start over from the best fit when there's nothing to keep, or the
+          // pane has changed size a lot since the rows were picked -- which
+          // includes the first real measurement on page load.
+          var resized = !rowsSize ||
+            Math.abs(width - rowsSize.w) > rowsSize.w * 0.2 ||
+            Math.abs(height - rowsSize.h) > rowsSize.h * 0.2;
+          if (!kept || resized) {
+            manualRows = false;
+            rowsSize = { w: width, h: height };
+            return best;
+          }
+
+          // Otherwise, rows you arranged yourself are kept until trees are
+          // added; automatic ones only until they're noticeably worse than
+          // the best fit.
+          if (newcomers) manualRows = false;
+          if (manualRows || rowsScale(blocks, kept) >= bestScale * 0.85) return kept;
+          rowsSize = { w: width, h: height };
+          return best;
+        }
+
+        // Dropping a top-level idea: the row is picked by where it was dropped
+        // (or a new row below the last), and its spot in that row by which
+        // trees it landed between. Returns a history detail, or null if
+        // nothing changed.
+        function moveRootByPosition(d, x, y) {
+          if (!layoutRows.length) return null;
+          var rowsIds = layoutRows.map(function (row) { return row.ids.slice(); });
+          var found = false;
+          rowsIds.forEach(function (ids) {
+            var k = ids.indexOf(d.id);
+            if (k !== -1) { ids.splice(k, 1); found = true; }
+          });
+          if (!found) return null;
+
+          var target = layoutRows.length; // past the last row: a new row
+          for (var r = 0; r < layoutRows.length; r++) {
+            var edge = r + 1 < layoutRows.length
+              ? (layoutRows[r].bottom + layoutRows[r + 1].top) / 2
+              : layoutRows[r].bottom + ROW_GAP_Y / 2;
+            if (y <= edge) { target = r; break; }
+          }
+          if (target === rowsIds.length) rowsIds.push([]);
+          var row = rowsIds[target];
+          var at = row.filter(function (id) { return byId[id] && byId[id].tx < x; }).length;
+          row.splice(at, 0, d.id);
+          rowsIds = rowsIds.filter(function (ids) { return ids.length; });
+
+          var order = [].concat.apply([], rowsIds);
+          var newRowOf = {};
+          rowsIds.forEach(function (ids, i) { ids.forEach(function (id) { newRowOf[id] = i; }); });
+          var currentOrder = roots.map(function (idea) { return idea.id; });
+          var rowsChanged = currentOrder.some(function (id) { return newRowOf[id] !== rowOf[id]; });
+          if (order.join() === currentOrder.join() && !rowsChanged) return null;
+
+          var byIdea = {};
+          roots.forEach(function (idea) { byIdea[idea.id] = idea; });
+          roots = order.map(function (id) { return byIdea[id]; });
+          rowOf = newRowOf;
+          if (rowsChanged) { manualRows = true; manualSize = { w: width, h: height }; }
+
+          var mine = rowsIds[newRowOf[d.id]], k2 = mine.indexOf(d.id);
+          var neighborId = k2 > 0 ? mine[k2 - 1] : mine[k2 + 1];
+          return {
+            text: d.text,
+            neighborText: neighborId ? byIdea[neighborId].text : null,
+            placement: k2 > 0 ? "after" : "before"
+          };
+        }
+
         // Root ideas keep a short title above the node; criticisms show only
         // their text preview below (see nodeSel.select("text.preview")) --
         // their number (e.g. "1.2") is still used for addressing them in
@@ -1167,6 +1329,7 @@
           .on("start", function (e, d) {
             if (!e.active) sim.alphaTarget(0.3).restart();
             d.fx = d.x; d.fy = d.y;
+            d.dragStartX = e.x; d.dragStartY = e.y;
             svg.classed("is-dragging", true);
           })
           .on("drag", function (e, d) { d.fx = e.x; d.fy = e.y; })
@@ -1175,7 +1338,12 @@
             if (!e.active) sim.alphaTarget(0);
             d.fx = null; d.fy = null;
             svg.classed("is-dragging", false);
-            var moveDetail = reorderSiblingsByPosition(d);
+            // A plain tap fires start/end too -- only an actual drag should
+            // be able to reorder anything.
+            if (Math.hypot(e.x - d.dragStartX, e.y - d.dragStartY) < 8) return;
+            // Top-level ideas move between/within rows; criticisms reorder
+            // among their siblings.
+            var moveDetail = d.depth === 0 ? moveRootByPosition(d, e.x, e.y) : reorderSiblingsByPosition(d);
             if (moveDetail) commit("reorder", moveDetail);
           });
 
@@ -1243,47 +1411,68 @@
           byId = next;
 
           bounds = null;
+          layoutRows = [];
           if (nodes.length) {
-            // Tidy-tree pass over all the trees side by side: gives every node a target column,
-            // with siblings ordered left to right by when they were submitted.
-            var toH = function (idea) { return { id: idea.id, children: idea.children.map(toH) }; };
-            var h = d3.hierarchy({ id: "", children: tree.map(toH) });
-            d3.tree()
-              .nodeSize([X_GAP, Y_GAP])
-              .separation(function (a, b) {
-                if (a.depth === 1) return 2.2;              // room between separate trees
-                // A slight bit of extra room between siblings specifically
-                // (+10px), on top of the usual node spacing.
-                return a.parent === b.parent ? 1 + 10 / X_GAP : 1.5;
-              })(h);
-
-            var minX = Infinity, maxX = -Infinity, maxDepth = 0;
-            h.each(function (n) {
-              if (n.depth === 0) return;
-              next[n.data.id].lx = n.x;
-              if (n.x < minX) minX = n.x;
-              if (n.x > maxX) maxX = n.x;
-              if (n.depth - 1 > maxDepth) maxDepth = n.depth - 1;
-            });
-            var cx = (minX + maxX) / 2;
             // Every other criticism on a row is nudged down a little, so its
             // text preview lands in the gap between its neighbours' previews
             // instead of colliding with them -- without needing any extra
             // horizontal room.
             var ALT_Y = 16;
-            nodes.forEach(function (node) {
-              var altY = (node.depth > 0 && node.rank % 2 === 1) ? ALT_Y : 0;
-              node.tx = width / 2 + node.lx - cx;
-              node.ty = TOP + node.depth * Y_GAP + altY;
+
+            // Tidy-tree pass per tree, so each tree can be placed as one block,
+            // with siblings ordered left to right by when they were submitted.
+            var toH = function (idea) { return { id: idea.id, children: idea.children.map(toH) }; };
+            var blocks = tree.map(function (idea) {
+              var h = d3.hierarchy(toH(idea));
+              d3.tree()
+                .nodeSize([X_GAP, Y_GAP])
+                .separation(function (a, b) {
+                  // A slight bit of extra room between siblings specifically
+                  // (+10px), on top of the usual node spacing.
+                  return a.parent === b.parent ? 1 + 10 / X_GAP : 1.5;
+                })(h);
+              var lo = Infinity, hi = -Infinity, maxDepth = 0;
+              h.each(function (n) {
+                next[n.data.id].lx = n.x;
+                if (n.x < lo) lo = n.x;
+                if (n.x > hi) hi = n.x;
+                if (n.depth > maxDepth) maxDepth = n.depth;
+              });
+              return { idea: idea, lo: lo, w: hi - lo, h: maxDepth * Y_GAP + ALT_Y };
             });
+
+            // Place the rows top to bottom, each one centered.
+            var counts = chooseRows(blocks);
+            var minX = Infinity, maxX = -Infinity, top = TOP, start = 0;
+            rowOf = {};
+            counts.forEach(function (c, r) {
+              var x = width / 2 - rowWidth(blocks, start, start + c) / 2;
+              var rowH = 0, ids = [];
+              blocks.slice(start, start + c).forEach(function (b) {
+                var offsetX = x - b.lo;
+                (function place(idea) {
+                  var node = next[idea.id];
+                  var altY = (node.depth > 0 && node.rank % 2 === 1) ? ALT_Y : 0;
+                  node.tx = offsetX + node.lx;
+                  node.ty = top + node.depth * Y_GAP + altY;
+                  if (node.tx < minX) minX = node.tx;
+                  if (node.tx > maxX) maxX = node.tx;
+                  idea.children.forEach(place);
+                })(b.idea);
+                rowOf[b.idea.id] = r;
+                ids.push(b.idea.id);
+                rowH = Math.max(rowH, b.h);
+                x += b.w + TREE_GAP_X;
+              });
+              layoutRows.push({ ids: ids, top: top, bottom: top + rowH });
+              top += rowH + ROW_GAP_Y;
+              start += c;
+            });
+
             nodes.forEach(function (node) {
               if (node.orderChanged && node.fx == null) assistedMove(node);
             });
-            bounds = {
-              minX: width / 2 + minX - cx,
-              maxX: width / 2 + maxX - cx,
-              maxY: TOP + maxDepth * Y_GAP + ALT_Y
-            };
+            bounds = { minX: minX, maxX: maxX, maxY: top - ROW_GAP_Y };
 
             // New nodes start beside their parent so the tree visibly grows out of it.
             nodes.forEach(function (node) {
@@ -1546,6 +1735,7 @@
             return "Deleted “" + preview(d.text || "", 24) + "”" +
               (d.count > 0 ? " (+" + d.count + (d.count === 1 ? " criticism)" : " criticisms)") : "");
           case "reorder":
+            if (!d.neighborText) return "Moved “" + preview(d.text || "", 24) + "” to a new row";
             return "Moved “" + preview(d.text || "", 20) + "” " + d.placement + " “" + preview(d.neighborText || "", 20) + "”";
           default:
             return entry.summary || "Event";
