@@ -195,6 +195,7 @@
     stroke: var(--label-dim);
     stroke-width: 1.6px;
     stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   /* Folds an opened chain of versions back up. A control, not an idea: it
@@ -211,6 +212,7 @@
     stroke: var(--label-dim);
     stroke-width: 1.6px;
     stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .forest .fold-control:hover .fold-ring,
   .forest .fold-control:focus-visible .fold-ring { stroke: var(--label); }
@@ -2023,7 +2025,7 @@
               g.append("circle").attr("class", "fold-ring far").attr("r", 6).attr("cx", -8).attr("cy", 4);
               g.append("circle").attr("class", "fold-ring mid").attr("r", 6).attr("cx", -4).attr("cy", 2);
               g.append("circle").attr("class", "fold-ring near").attr("r", 6);
-              g.append("path").attr("class", "fold-mark").attr("d", "M-3,0 L3,0");
+              g.append("path").attr("class", "fold-mark").attr("d", "M-3.5,-5.5 L0,-2 L3.5,-5.5 M-3.5,5.5 L0,2 L3.5,5.5");
               g.append("title");
               g.on("click", function (e, d) { togglePile(d.baseId); })
                 .on("keydown", function (e, d) {
@@ -2055,7 +2057,7 @@
               g.append("circle").attr("class", "stack stack-far");
               g.append("circle").attr("class", "stack stack-near");
               g.append("circle").attr("class", "core");
-              g.append("path").attr("class", "pile-mark").attr("d", "M-3,0 L3,0 M0,-3 L0,3");
+              g.append("path").attr("class", "pile-mark").attr("d", "M-3.5,-2 L0,-5.5 L3.5,-2 M-3.5,2 L0,5.5 L3.5,2");
               g.append("text");
               g.append("text").attr("class", "preview");
               g.call(drag)
