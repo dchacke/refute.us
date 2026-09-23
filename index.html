@@ -193,7 +193,7 @@
     display: block;
     fill: none;
     stroke: var(--label-dim);
-    stroke-width: 1.4px;
+    stroke-width: 1.2px;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
@@ -210,7 +210,7 @@
   .forest .fold-control .fold-mark {
     fill: none;
     stroke: var(--label-dim);
-    stroke-width: 1.4px;
+    stroke-width: 1.2px;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
@@ -2026,7 +2026,7 @@
               g.append("circle").attr("class", "fold-ring mid").attr("r", 6).attr("cx", -4).attr("cy", 2);
               g.append("circle").attr("class", "fold-ring near").attr("r", 6);
               // Two chevrons pointing together: this folds the chain back up.
-              g.append("path").attr("class", "fold-mark").attr("d", "M-2.5,-4 L0,-1.5 L2.5,-4 M-2.5,4 L0,1.5 L2.5,4");
+              g.append("path").attr("class", "fold-mark").attr("d", "M-1.8,-2.9 L0,-1.1 L1.8,-2.9 M-1.8,2.9 L0,1.1 L1.8,2.9");
               g.append("title");
               g.on("click", function (e, d) { togglePile(d.baseId); })
                 .on("keydown", function (e, d) {
@@ -2059,7 +2059,7 @@
               g.append("circle").attr("class", "stack stack-near");
               g.append("circle").attr("class", "core");
               // Two chevrons pointing apart: this opens the pile.
-              g.append("path").attr("class", "pile-mark").attr("d", "M-2.5,-1.5 L0,-4 L2.5,-1.5 M-2.5,1.5 L0,4 L2.5,1.5");
+              g.append("path").attr("class", "pile-mark").attr("d", "M-1.8,-1.1 L0,-2.9 L1.8,-1.1 M-1.8,1.1 L0,2.9 L1.8,1.1");
               g.append("text");
               g.append("text").attr("class", "preview");
               g.call(drag)
