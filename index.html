@@ -2158,15 +2158,16 @@
             });
           });
 
+          // A pile doesn't break the chain in two: the versions on either side
+          // of it keep the one tie between them and the pile sits on it, just
+          // as the fold control does once the run is open. A pile that starts
+          // a chain has no version on its left, so there is no tie at all.
           var versionLinks = [];
           nodes.forEach(function (node) {
+            if (node.pile) return;
             var from = node.versionOf && next[node.versionOf];
+            if (from && from.pile) from = from.versionOf ? next[from.versionOf] : null;
             if (!from) return;
-            // A pile that starts a chain has nothing on its left, so a tie out
-            // of it would be the only thing tethering it to the version beside
-            // it -- and the fold control that replaces it when the run opens
-            // draws no tie either.
-            if (from.pile && !from.versionOf) return;
             versionLinks.push({ source: from, target: node });
           });
 
