@@ -1227,6 +1227,9 @@
               // was a version of one becomes a version of the pile instead.
               var foldedInto = {};
               function chainedTo(id) { return foldedInto[id] || id; }
+              // What's drawn just before the one being emitted, so an open run
+              // knows the version edge it hangs off (see foldSel).
+              var prevShownId = null;
 
               for (var i = 0; i < members.length;) {
                 var member = members[i];
@@ -1248,6 +1251,7 @@
                   };
                   ids.forEach(function (id) { foldedInto[id] = pile.id; });
                   out.push(pile);
+                  prevShownId = pile.id;
                   i += run.length;
                   continue;
                 }
@@ -1256,12 +1260,13 @@
                 if (run && run[0] === member) {
                   openRuns.push({
                     baseId: member.id,
-                    headId: member.id,
+                    prevId: prevShownId,
                     count: run.length,
                     ids: run.map(function (old) { return old.id; })
                   });
                 }
                 i++;
+                prevShownId = member.id;
                 var already = wrapped[member.id];
                 if (already) { out.push(already); continue; }
                 var copy = {
@@ -1670,10 +1675,29 @@
           // Links leave a parent downward and arrive at the child from above.
           linkSel.attr("d", linkPath);
           versionSel.attr("d", versionPath);
-          // Each fold control rides just left of the first version it folds.
+          // A fold control rides the version edge nearest the middle of the
+          // run it folds, so it reads as belonging to that stretch of the
+          // chain rather than to any one version -- and never sits on a disc,
+          // which would make it look like an idea. Where two edges are equally
+          // close (an odd-sized run, or a run of one) it takes the left one,
+          // which for a single version is just where it used to sit.
           foldSel.attr("transform", function (d) {
-            var head = byId[d.headId];
-            return head ? "translate(" + (head.x - 30) + "," + head.y + ")" : "translate(-9999,-9999)";
+            var shown = d.ids.map(function (id) { return byId[id]; }).filter(Boolean);
+            if (!shown.length) return "translate(-9999,-9999)";
+            var chain = shown.slice();
+            var before = d.prevId ? byId[d.prevId] : null;
+            if (before) chain.unshift(before);
+            var middle = (shown[0].x + shown[shown.length - 1].x) / 2;
+            var best = null, bestGap = Infinity;
+            for (var i = 0; i + 1 < chain.length; i++) {
+              var mid = { x: (chain[i].x + chain[i + 1].x) / 2, y: (chain[i].y + chain[i + 1].y) / 2 };
+              var gap = Math.abs(mid.x - middle);
+              if (gap < bestGap - 0.5) { best = mid; bestGap = gap; }
+            }
+            // A single version with nothing drawn before it has no edge to sit
+            // on, so the control keeps to its left.
+            if (!best) best = { x: shown[0].x - 30, y: shown[0].y };
+            return "translate(" + best.x + "," + best.y + ")";
           });
           updateFlowShapes();
           nodeSel.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
