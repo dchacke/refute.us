@@ -1158,6 +1158,10 @@
         var LEAF_HALF = X_GAP / 2;     // room a childless idea takes to its own side
         var BLOCK_GAP = 10;            // extra room between two neighbouring subtrees
         var MEMBER_GAP = X_GAP + BLOCK_GAP; // versions sit as close as ordinary siblings do
+        // How far a fold control sits from the first version of the run it
+        // folds -- and, so the two look alike, how far a pile that starts a
+        // chain sits from the version beside it.
+        var FOLD_OFFSET = 30;
 
         // Splits siblings into version groups, keeping the list's own order.
         function groupSiblings(list) {
@@ -1352,15 +1356,21 @@
           // have a place. Putting such a member over the first child group
           // instead would sit it above a criticism belonging to a later
           // version and push that version off its own children.
+          // A pile that starts a chain stands outside it rather than in it --
+          // it is where the fold control will be once the run is open -- so it
+          // keeps that control's distance instead of a whole version's.
+          function gapAfter(i) {
+            return (i === 0 && members[0].pile) ? FOLD_OFFSET : MEMBER_GAP;
+          }
           var anchor = -1;
           for (var i = 0; i < memberXs.length; i++) {
             if (memberXs[i] !== null) { anchor = i; break; }
           }
           if (anchor === -1) { memberXs[0] = 0; anchor = 0; }
-          for (var i = anchor - 1; i >= 0; i--) memberXs[i] = memberXs[i + 1] - MEMBER_GAP;
+          for (var i = anchor - 1; i >= 0; i--) memberXs[i] = memberXs[i + 1] - gapAfter(i);
           for (var i = anchor + 1; i < memberXs.length; i++) {
-            if (memberXs[i] === null || memberXs[i] < memberXs[i - 1] + MEMBER_GAP) {
-              memberXs[i] = memberXs[i - 1] + MEMBER_GAP;
+            if (memberXs[i] === null || memberXs[i] < memberXs[i - 1] + gapAfter(i - 1)) {
+              memberXs[i] = memberXs[i - 1] + gapAfter(i - 1);
             }
           }
           // Only titled versions take a turn in the up/down alternation, so
@@ -1729,7 +1739,7 @@
             var chain = d.ids.map(function (id) { return byId[id]; });
             if (chain.some(function (node) { return !node; })) return "translate(-9999,-9999)";
             var before = d.prevId ? byId[d.prevId] : null;
-            if (!before) return "translate(" + (chain[0].x - 30) + "," + chain[0].y + ")";
+            if (!before) return "translate(" + (chain[0].x - FOLD_OFFSET) + "," + chain[0].y + ")";
             chain.unshift(before);
             // chain is [the version before the run, then the run itself], so
             // the run spans indices 1..n and its middle is (1 + n) / 2. Edge i
@@ -1750,9 +1760,15 @@
         // depth (top-level ideas on top) and a column that keeps each subtree under its parent.
         var sim = d3.forceSimulation()
           .force("link", d3.forceLink().id(function (d) { return d.id; }).distance(Y_GAP).strength(0.2))
-          .force("charge", d3.forceManyBody().strength(-60))
-          .force("collide", d3.forceCollide().radius(function (d) { return radius(d) + 8; }))
-          .force("x", d3.forceX(function (d) { return d.tx; }).strength(0.25))
+          // A pile sits deliberately close to the version beside it, so it
+          // pushes and is pushed far less than an idea, which needs room for
+          // a title. Otherwise the layout asks for one distance and the
+          // simulation settles at another.
+          .force("charge", d3.forceManyBody().strength(function (d) { return d.pile ? -8 : -60; }))
+          .force("collide", d3.forceCollide().radius(function (d) { return radius(d) + (d.pile ? 1 : 8); }))
+          // A pile has no place of its own to find: the layout decides where
+          // it goes, so it holds that spot firmly instead of drifting off it.
+          .force("x", d3.forceX(function (d) { return d.tx; }).strength(function (d) { return d.pile ? 0.9 : 0.25; }))
           .force("y", d3.forceY(function (d) { return d.ty; }).strength(0.6))
           .alphaDecay(0.04)
           .on("tick", draw);
