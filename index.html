@@ -1679,23 +1679,25 @@
           // run it folds, so it reads as belonging to that stretch of the
           // chain rather than to any one version -- and never sits on a disc,
           // which would make it look like an idea. Where two edges are equally
-          // close (an odd-sized run, or a run of one) it takes the left one,
-          // which for a single version is just where it used to sit.
+          // close (an odd-sized run, or a run of one) it takes the left one.
+          // A run that starts the chain is the exception: its pile stood out
+          // to the left of everything, so its control stays there too.
           foldSel.attr("transform", function (d) {
             var shown = d.ids.map(function (id) { return byId[id]; }).filter(Boolean);
             if (!shown.length) return "translate(-9999,-9999)";
-            var chain = shown.slice();
             var before = d.prevId ? byId[d.prevId] : null;
-            if (before) chain.unshift(before);
-            var middle = (shown[0].x + shown[shown.length - 1].x) / 2;
-            var best = null, bestGap = Infinity;
-            for (var i = 0; i + 1 < chain.length; i++) {
-              var mid = { x: (chain[i].x + chain[i + 1].x) / 2, y: (chain[i].y + chain[i + 1].y) / 2 };
-              var gap = Math.abs(mid.x - middle);
-              if (gap < bestGap - 0.5) { best = mid; bestGap = gap; }
+            var best = null;
+            if (before) {
+              var chain = shown.slice();
+              chain.unshift(before);
+              var middle = (shown[0].x + shown[shown.length - 1].x) / 2;
+              var bestGap = Infinity;
+              for (var i = 0; i + 1 < chain.length; i++) {
+                var mid = { x: (chain[i].x + chain[i + 1].x) / 2, y: (chain[i].y + chain[i + 1].y) / 2 };
+                var gap = Math.abs(mid.x - middle);
+                if (gap < bestGap - 0.5) { best = mid; bestGap = gap; }
+              }
             }
-            // A single version with nothing drawn before it has no edge to sit
-            // on, so the control keeps to its left.
             if (!best) best = { x: shown[0].x - 30, y: shown[0].y };
             return "translate(" + best.x + "," + best.y + ")";
           });
