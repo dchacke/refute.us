@@ -1342,15 +1342,22 @@
             if (!owned.length) return null;
             return owned.reduce(function (a, group) { return a + group.center; }, 0) / owned.length;
           });
+          // A pile takes the same room as a version beside it: the titles of
+          // the versions on either side are what need the space, and they run
+          // wider than a disc.
           for (var i = 0; i < memberXs.length; i++) {
             if (memberXs[i] === null) {
               memberXs[i] = i === 0 ? (childGroups.length ? childGroups[0].center : 0) : memberXs[i - 1] + MEMBER_GAP;
             }
             if (i > 0 && memberXs[i] < memberXs[i - 1] + MEMBER_GAP) memberXs[i] = memberXs[i - 1] + MEMBER_GAP;
           }
+          // Only titled versions take a turn in the up/down alternation, so
+          // the two versions flanking a pile still land at different heights
+          // and their titles stay clear of each other.
+          var titled = 0;
           members.forEach(function (member, i) {
             pos[member.id] = memberXs[i];
-            versionIndex[member.id] = i;
+            versionIndex[member.id] = member.pile ? 0 : titled++;
           });
 
           var xs = Object.keys(pos).map(function (id) { return pos[id]; });
@@ -1683,9 +1690,12 @@
 
         // Two versions sit side by side on the same row, so their tie is drawn
         // as a shallow arc dipping below the line between them, clear of the
-        // titles above and of the criticisms hanging underneath.
+        // titles above and of the criticisms hanging underneath. A pile has
+        // neither, and sits level rather than staggered, so its ties are drawn
+        // straight -- there's nothing for them to go around.
         function versionPath(d) {
           var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
+          if (d.source.pile || d.target.pile) return "M" + sx + "," + sy + "L" + tx + "," + ty;
           var mx = (sx + tx) / 2, my = (sy + ty) / 2 + Math.min(26, Math.abs(tx - sx) / 6 + 10);
           return "M" + sx + "," + sy + "Q" + mx + "," + my + " " + tx + "," + ty;
         }
@@ -2029,8 +2039,9 @@
                   if (!node) return;
                   // Every other criticism on a row is nudged down; so is every
                   // other version of an idea, which sit as close together as
-                  // siblings do.
-                  var stagger = node.depth > 0 ? node.rank : (b.versionIndex[id] || 0);
+                  // siblings do. The nudge is there to keep titles from
+                  // colliding, so a pile, which has none, stays on the line.
+                  var stagger = node.pile ? 0 : (node.depth > 0 ? node.rank : (b.versionIndex[id] || 0));
                   var altY = stagger % 2 === 1 ? ALT_Y : 0;
                   node.tx = offsetX + b.pos[id];
                   node.ty = top + node.depth * Y_GAP + altY;
