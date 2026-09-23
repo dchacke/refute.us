@@ -2010,7 +2010,7 @@
             if (node) {
               if (parentId) {
                 node.parentIds.push(parentId);
-                links.push({ source: parentId, target: id });
+                if (!idea.pile) links.push({ source: parentId, target: id });
               }
               if (depth > node.depth) node.depth = depth;
               return;
@@ -2037,7 +2037,11 @@
             node.pendingCount = idea.children.filter(function (c) { return !!lastStatus[c.id]; }).length;
             next[id] = node;
             nodes.push(node);
-            if (parentId) links.push({ source: parentId, target: id });
+            // A pile is laid over the chain it stands for, not hung from the
+            // idea being criticized: the versions it holds are out of sight,
+            // and the fold control that takes its place once the run is open
+            // has no edge to the parent either.
+            if (parentId && !idea.pile) links.push({ source: parentId, target: id });
             idea.children.forEach(function (c, i) {
               walk(c, depth + 1, id, i);
             });
