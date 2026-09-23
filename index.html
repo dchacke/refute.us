@@ -186,20 +186,36 @@
      the ideas inside it until you open it. */
   .forest .node .stack { display: none; fill: var(--right); stroke: var(--label-dim); stroke-width: 1.5px; }
   .forest .node.is-pile .stack { display: block; }
+  /* A folded pile opens, so it carries a plus; the control that folds a chain
+     back up carries a minus (see .fold-control). */
+  .forest .node .pile-mark { display: none; }
+  .forest .node.is-pile .pile-mark {
+    display: block;
+    fill: none;
+    stroke: var(--label-dim);
+    stroke-width: 1.6px;
+    stroke-linecap: round;
+  }
 
   /* Folds an opened chain of versions back up. A control, not an idea: it
      can't be dragged, and nothing about the discussion changes. */
   .forest .fold-control { cursor: pointer; }
   .forest .fold-control .hit { fill: transparent; stroke: none; }
-  .forest .fold-control .chevron {
+  .forest .fold-control .fold-ring {
+    fill: var(--right);
+    stroke: var(--label-dim);
+    stroke-width: 1.5px;
+  }
+  .forest .fold-control .fold-mark {
     fill: none;
     stroke: var(--label-dim);
-    stroke-width: 2px;
+    stroke-width: 1.6px;
     stroke-linecap: round;
-    stroke-linejoin: round;
   }
-  .forest .fold-control:hover .chevron,
-  .forest .fold-control:focus-visible .chevron { stroke: var(--label); }
+  .forest .fold-control:hover .fold-ring,
+  .forest .fold-control:focus-visible .fold-ring { stroke: var(--label); }
+  .forest .fold-control:hover .fold-mark,
+  .forest .fold-control:focus-visible .fold-mark { stroke: var(--label); }
   .forest .fold-control:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   .forest .node.is-pile circle.core,
   .forest .node.is-pile:not(.is-adoptable) circle.core,
@@ -2002,8 +2018,12 @@
                 .attr("class", "fold-control")
                 .attr("tabindex", 0)
                 .attr("role", "button");
-              g.append("circle").attr("class", "hit").attr("r", 12);
-              g.append("path").attr("class", "chevron").attr("d", "M2,-5 L-3,0 L2,5");
+              g.append("circle").attr("class", "hit").attr("r", 14);
+              // A miniature of the pile these versions fold back into.
+              g.append("circle").attr("class", "fold-ring far").attr("r", 6).attr("cx", -8).attr("cy", 4);
+              g.append("circle").attr("class", "fold-ring mid").attr("r", 6).attr("cx", -4).attr("cy", 2);
+              g.append("circle").attr("class", "fold-ring near").attr("r", 6);
+              g.append("path").attr("class", "fold-mark").attr("d", "M-3,0 L3,0");
               g.append("title");
               g.on("click", function (e, d) { togglePile(d.baseId); })
                 .on("keydown", function (e, d) {
@@ -2011,6 +2031,8 @@
                 });
               return g;
             });
+          foldSel.select("circle.far").attr("opacity", function (d) { return d.count > 2 ? 1 : 0; });
+          foldSel.select("circle.mid").attr("opacity", function (d) { return d.count > 1 ? 1 : 0; });
           foldSel.select("title").text(function (d) {
             return "Fold " + d.count + " earlier " + (d.count === 1 ? "version" : "versions") + " away";
           });
@@ -2033,6 +2055,7 @@
               g.append("circle").attr("class", "stack stack-far");
               g.append("circle").attr("class", "stack stack-near");
               g.append("circle").attr("class", "core");
+              g.append("path").attr("class", "pile-mark").attr("d", "M-3,0 L3,0 M0,-3 L0,3");
               g.append("text");
               g.append("text").attr("class", "preview");
               g.call(drag)
