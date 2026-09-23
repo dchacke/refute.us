@@ -1359,11 +1359,17 @@
           // have a place. Putting such a member over the first child group
           // instead would sit it above a criticism belonging to a later
           // version and push that version off its own children.
-          // A pile that starts a chain stands outside it rather than in it --
-          // it is where the fold control will be once the run is open -- so it
-          // keeps that control's distance instead of a whole version's.
+          // A pile takes no room of its own: it is laid over the tie between
+          // the versions on either side of it, so those two sit one version
+          // apart, exactly as they do with the fold control between them once
+          // the run is open. (Wider is still fine -- the minimum is all this
+          // sets, so a version with a broad subtree under it still pushes its
+          // neighbours out.) A pile that starts a chain stands outside the
+          // chain rather than in it, and keeps the fold control's distance.
           function gapAfter(i) {
-            return (i === 0 && members[0].pile) ? FOLD_OFFSET : MEMBER_GAP;
+            if (i === 0 && members[0].pile) return FOLD_OFFSET;
+            if (members[i].pile || members[i + 1].pile) return MEMBER_GAP / 2;
+            return MEMBER_GAP;
           }
           var anchor = -1;
           for (var i = 0; i < memberXs.length; i++) {
