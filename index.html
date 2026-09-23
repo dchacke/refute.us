@@ -1136,6 +1136,9 @@
         var linkSel = linkLayer.selectAll("path");
         var linkFlowSel = linkFlowLayer.selectAll("path");
         var versionSel = versionLayer.selectAll("path");
+        // Each pile with the versions it sits between, so it can be placed
+        // from them on every tick (see placePiles).
+        var pileAnchors = [];
         var foldSel = foldLayer.selectAll("g");
         var nodeSel = nodeLayer.selectAll("g");
 
@@ -1719,7 +1722,31 @@
           return "M" + sx + "," + sy + "Q" + mx + "," + my + " " + tx + "," + ty;
         }
 
+        // A pile takes its place from the versions it sits between rather than
+        // from the simulation, so that dragging one of them carries the pile
+        // along instead of leaving it standing where the chain used to be. A
+        // pile between two versions rides the middle of the tie; one that
+        // starts a chain keeps the fold control's distance from the version
+        // beside it.
+        function placePiles() {
+          pileAnchors.forEach(function (anchor) {
+            var left = anchor.left, right = anchor.right, x, y;
+            if (left && right && isFinite(left.x) && isFinite(right.x)) {
+              x = (left.x + right.x) / 2; y = (left.y + right.y) / 2;
+            } else if (right && isFinite(right.x)) {
+              x = right.x - FOLD_OFFSET; y = right.y;
+            } else if (left && isFinite(left.x)) {
+              x = left.x + FOLD_OFFSET; y = left.y;
+            } else {
+              return;
+            }
+            anchor.node.fx = anchor.node.x = x;
+            anchor.node.fy = anchor.node.y = y;
+          });
+        }
+
         function draw() {
+          placePiles();
           // Links leave a parent downward and arrive at the child from above.
           linkSel.attr("d", linkPath);
           versionSel.attr("d", versionPath);
@@ -2119,6 +2146,18 @@
           // Ties between versions of the same idea. They're drawn, but kept
           // out of the simulation -- where each version sits is the layout's
           // business, not a spring's.
+          pileAnchors = [];
+          nodes.forEach(function (node) {
+            if (!node.pile) return;
+            var right = null;
+            nodes.forEach(function (other) { if (other.versionOf === node.id) right = other; });
+            pileAnchors.push({
+              node: node,
+              left: node.versionOf ? next[node.versionOf] : null,
+              right: right
+            });
+          });
+
           var versionLinks = [];
           nodes.forEach(function (node) {
             var from = node.versionOf && next[node.versionOf];
