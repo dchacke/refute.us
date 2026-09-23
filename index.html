@@ -1121,6 +1121,12 @@
         var byId = {};
         var lastTree = [];
         var lastStatus = {};
+        // What the step being looked at changed, and which subtrees hold any
+        // of it -- a fold must not hide the very thing you scrubbed here to
+        // see. Empty at the newest point in the timeline, which is the
+        // working state, where the folds are the ones you chose yourself.
+        var lastTouched = {};
+        var subtreeTouched = {};
         var bounds = null;      // extent of the laid-out forest, used to fit it in view
         var userMoved = false;  // once you pan or zoom yourself, auto-fit stops
         var wasEmpty = true;    // any pan/zoom while there was nothing to see shouldn't stick
@@ -1192,11 +1198,12 @@
         // through them (their own criticisms, the note saying they were
         // superseded) goes with them. Criticisms the versions still shown
         // carry stay where they are.
-        // Which versions you've opened, one entry per version rather than one
-        // per pile: a run can split when you answer a criticism inside it, or
-        // two runs can merge when you criticize the version between them, and
-        // keeping the mark on the versions themselves means what's open stays
-        // open through both.
+        // What you've said about each version: true if you opened its run,
+        // false if you folded it, nothing if you haven't touched it. One entry
+        // per version rather than one per pile, because a run can split when
+        // you answer a criticism inside it and two runs can merge when you
+        // criticize the version between them -- keeping the mark on the
+        // versions themselves means what's open stays open through both.
         var expandedVersions = {};
         var openRuns = [];        // the runs currently open, for their fold controls
 
@@ -1204,12 +1211,38 @@
         // so it isn't saved with it.
         function togglePile(ids) {
           if (!ids || !ids.length) return;
-          var open = ids.some(function (id) { return expandedVersions[id]; });
+          var open = runIsOpen(ids);
+          ids.forEach(function (id) { expandedVersions[id] = !open; });
+          update(lastTree, lastStatus, lastTouched);
+        }
+
+        // Whether a run is showing: what you last said about it, and failing
+        // that, whether it hides what the step you're looking at changed.
+        function runIsOpen(ids) {
+          var said;
           ids.forEach(function (id) {
-            if (open) delete expandedVersions[id];
-            else expandedVersions[id] = true;
+            if (expandedVersions[id] !== undefined) said = expandedVersions[id];
           });
-          update(lastTree, lastStatus);
+          if (said !== undefined) return said;
+          return ids.some(function (id) { return subtreeTouched[id]; });
+        }
+
+        // Which ideas have anything the step changed at or below them. A
+        // change deep inside a folded run is just as hidden as one to the
+        // version itself, so the whole subtree counts.
+        function markTouchedSubtrees(list) {
+          var out = {};
+          (function visit(ideas) {
+            ideas.forEach(function (idea) {
+              if (out[idea.id] !== undefined) return;
+              out[idea.id] = false;   // holds while the subtree is being walked
+              visit(idea.children);
+              out[idea.id] = !!lastTouched[idea.id] || idea.children.some(function (child) {
+                return out[child.id];
+              });
+            });
+          })(list || []);
+          return out;
         }
 
         // Which versions of a chain fold away: every run of older ones that
@@ -1254,7 +1287,7 @@
               for (var i = 0; i < members.length;) {
                 var member = members[i];
                 var run = runOf[member.id];
-                var open = run && run.some(function (old) { return expandedVersions[old.id]; });
+                var open = run && runIsOpen(run.map(function (old) { return old.id; }));
                 if (run && !open) {
                   var ids = run.map(function (old) { return old.id; });
                   var pile = {
@@ -1889,7 +1922,7 @@
         function resize() {
           width = pane.clientWidth || width;
           height = pane.clientHeight || height;
-          update(lastTree, lastStatus);
+          update(lastTree, lastStatus, lastTouched);
         }
         if (window.ResizeObserver) new ResizeObserver(resize).observe(pane);
         else window.addEventListener("resize", resize);
@@ -1993,9 +2026,11 @@
 
         // Redraws the chart from the idea tree. Nodes are matched by idea id, so
         // surviving nodes keep their positions when others are added or deleted.
-        function update(tree, status) {
+        function update(tree, status, touched) {
           lastTree = tree;
           lastStatus = status || {};
+          lastTouched = touched || {};
+          subtreeTouched = markTouchedSubtrees(tree);
           var nodes = [], links = [], next = {};
           var shown = displayForest(tree);
 
@@ -2571,10 +2606,48 @@
       }
 
       // Recomputes adoptability and redraws the chart.
+      // What the step at a point in the timeline changed, as a set of ids.
+      // Only while reviewing: at the newest point there is nothing to reveal,
+      // since that's the working state and its folds are the ones you chose.
+      // The history entries record text rather than ids, so this compares the
+      // two snapshots instead -- which also covers every kind of step rather
+      // than just the ones whose wording happens to name something.
+      function changedAt(index) {
+        if (index <= 0 || index >= history.length - 1) return {};
+        return changedIds(history[index - 1].snapshot, history[index].snapshot);
+      }
+
+      function graphSignatures(graph) {
+        var kids = {}, sig = {};
+        (graph && graph.edges || []).forEach(function (edge) {
+          (kids[edge[0]] = kids[edge[0]] || []).push(edge[1]);
+        });
+        (graph && graph.nodes || []).forEach(function (node) {
+          sig[node.id] = node.text + "\u0000" + (node.versionOf || "") +
+            "\u0000" + (kids[node.id] || []).slice().sort().join(",");
+        });
+        return sig;
+      }
+
+      function changedIds(before, after) {
+        var was = graphSignatures(before), now = graphSignatures(after), out = {};
+        Object.keys(now).forEach(function (id) {
+          if (was[id] !== now[id]) out[id] = true;
+        });
+        // Something deleted isn't there to point at any more, so whatever it
+        // hung from stands in for it.
+        (before && before.edges || []).forEach(function (edge) {
+          if (was[edge[1]] !== undefined && now[edge[1]] === undefined && now[edge[0]] !== undefined) {
+            out[edge[0]] = true;
+          }
+        });
+        return out;
+      }
+
       function refresh() {
         var status = {};
         evaluate(roots, status);
-        forest.update(roots, status);
+        forest.update(roots, status, changedAt(cursor));
         var total = countIdeas(roots);
         emptyHint.hidden = total > 1;
         emptyHint.textContent = total === 1 ? HINT_SECOND : HINT_FIRST;
