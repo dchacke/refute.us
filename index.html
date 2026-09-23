@@ -871,11 +871,6 @@
       // What's stored is a discussion. Which shape it's in belongs inside the
       // envelope, which carries `version`, not in the name of the key.
       var STORE_KEY = "discussion";
-      // Keys this page saved under before. The envelope is read once so a
-      // workbench that still has it carries over; "ideas" held the format from
-      // before the timeline existed and is only cleared away.
-      var OLD_STORE_KEY = "ideas-history-v1";
-      var OLD_IDEAS_KEY = "ideas";
       // The ideas, as a graph: each idea is { id, text, children: [idea, ...] },
       // and an idea can appear as a child of more than one parent (the same
       // criticism applying to two versions of an idea). Children are held by
@@ -2391,7 +2386,7 @@
         return null;
       }
 
-      // What's saved under HISTORY_KEY is wrapped in a versioned envelope --
+      // What's saved under STORE_KEY is wrapped in a versioned envelope --
       // { version, state } -- so the shape of `state` can keep changing
       // (a rename, a new field, whatever) without ever touching how the
       // envelope itself is read. Data saved before this system existed has
@@ -2405,7 +2400,7 @@
       var MIGRATIONS = {
         1: function (state) {
           // Version 0 was unversioned: `state` here is whatever was stored
-          // directly under HISTORY_KEY before the envelope existed.
+          // directly under the key before the envelope existed.
           var history = (state && Array.isArray(state.history)) ? state.history : [];
           var cursor = (state && typeof state.cursor === "number") ? state.cursor : 0;
           return { history: history, cursor: cursor };
@@ -2460,26 +2455,9 @@
       var history = [];
       var cursor = -1;
 
-      // Clears away the keys this page used to save under, once whatever was
-      // in them has been read.
-      function retireOldKeys() {
-        try {
-          localStorage.removeItem(OLD_STORE_KEY);
-          localStorage.removeItem(OLD_IDEAS_KEY);
-        } catch (err) {
-          /* storage unavailable: nothing to clear away */
-        }
-      }
-
       function loadHistory() {
-        var carriedOver = false;
         try {
-          var stored = localStorage.getItem(STORE_KEY);
-          if (stored === null) {
-            stored = localStorage.getItem(OLD_STORE_KEY);
-            carriedOver = stored !== null;
-          }
-          var raw = JSON.parse(stored || "null");
+          var raw = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
           var state = migrateStoredState(raw).state;
           if (state && state.ui && typeof state.ui.legendOpen === "boolean") ui.legendOpen = state.ui.legendOpen;
           if (state && Array.isArray(state.history) && state.history.length) {
@@ -2502,8 +2480,6 @@
             cursor = Math.min(Math.max(0, state.cursor | 0), history.length - 1);
             roots = graphToIdeas(history[cursor].snapshot);
             rowsMeta = copyRowsMeta(history[cursor].rows);
-            if (carriedOver) saveHistory();
-            retireOldKeys();
             return;
           }
         } catch (err) {
@@ -2513,7 +2489,6 @@
           alert("Your saved discussion couldn't be loaded, so this page is starting fresh.");
         }
 
-        retireOldKeys();
         roots = [];
         history = [{ snapshot: ideasToGraph([]), type: "start", detail: {}, time: Date.now() }];
         cursor = 0;
