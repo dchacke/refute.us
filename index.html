@@ -1172,30 +1172,41 @@
         // through them (their own criticisms, the note saying they were
         // superseded) goes with them. Criticisms the versions still shown
         // carry stay where they are.
-        var expandedPiles = {};   // chain's first version id -> true while you've opened it
-        var openChains = [];      // the chains currently open, for their fold controls
+        // Which versions you've opened, one entry per version rather than one
+        // per pile: a run can split when you answer a criticism inside it, or
+        // two runs can merge when you criticize the version between them, and
+        // keeping the mark on the versions themselves means what's open stays
+        // open through both.
+        var expandedVersions = {};
+        var openRuns = [];        // the runs currently open, for their fold controls
 
         // Opening a pile is a way of looking, not a change to the discussion,
         // so it isn't saved with it.
-        function togglePile(baseId) {
-          if (expandedPiles[baseId]) delete expandedPiles[baseId];
-          else expandedPiles[baseId] = true;
+        function togglePile(ids) {
+          if (!ids || !ids.length) return;
+          var open = ids.some(function (id) { return expandedVersions[id]; });
+          ids.forEach(function (id) {
+            if (open) delete expandedVersions[id];
+            else expandedVersions[id] = true;
+          });
           update(lastTree, lastStatus);
         }
 
-        // Which versions of a chain fold away: the leading run of older ones
-        // that aren't rationally adoptable. It doesn't matter whether what
-        // knocked them out was the note the revision filed automatically or a
+        // Which versions of a chain fold away: every run of older ones that
+        // aren't rationally adoptable. It doesn't matter whether what knocked
+        // them out was the note the revision filed automatically or a
         // criticism you typed yourself -- folding follows the same rule the
-        // rest of the page does. An older version nothing has knocked out
-        // stays in view, and so does the newest one, however it's faring.
-        function foldableRun(members) {
-          var run = [];
+        // rest of the page does. A version that's been rehabilitated stays in
+        // view and splits the chain into separate runs, each folding on its
+        // own; so does the newest version, however it's faring.
+        function foldableRuns(members) {
+          var runs = [], run = null;
           for (var i = 0; i < members.length - 1; i++) {
-            if (lastStatus[members[i].id]) break;
+            if (lastStatus[members[i].id]) { run = null; continue; }
+            if (!run) { run = []; runs.push(run); }
             run.push(members[i]);
           }
-          return run;
+          return runs;
         }
 
         // What's actually drawn, given the ideas themselves. Ideas are wrapped
@@ -1203,46 +1214,65 @@
         // has, so a shared criticism stays a single thing here too.
         function displayForest(list) {
           var wrapped = {};
-          openChains = [];
+          openRuns = [];
           function displayList(ideas) {
             var out = [];
             groupSiblings(ideas).forEach(function (group) {
               var members = group.members;
-              var baseId = members[0].id;
-              var foldable = foldableRun(members);
-              var open = !!expandedPiles[baseId];
-              var collapsed = open ? [] : foldable;
-              var pile = null;
-              if (collapsed.length) {
-                pile = {
-                  id: "pile:" + baseId,
-                  text: collapsed.length + (collapsed.length === 1 ? " earlier version" : " earlier versions"),
-                  children: [],
-                  pile: true,
-                  count: collapsed.length,
-                  baseId: baseId,
-                  members: collapsed,
-                  row: collapsed[0].row
-                };
-                out.push(pile);
-              }
-              // An open chain is marked by the fold control (see foldSel), not
-              // by an idea of its own.
-              if (open && foldable.length) openChains.push({ baseId: baseId, headId: members[0].id, count: foldable.length });
-              members.forEach(function (member) {
-                if (collapsed.indexOf(member) !== -1) return;
+              var runOf = {};       // version id -> the run it belongs to
+              foldableRuns(members).forEach(function (run) {
+                run.forEach(function (member) { runOf[member.id] = run; });
+              });
+              // Folded versions still have to sit in the chain, so whatever
+              // was a version of one becomes a version of the pile instead.
+              var foldedInto = {};
+              function chainedTo(id) { return foldedInto[id] || id; }
+
+              for (var i = 0; i < members.length;) {
+                var member = members[i];
+                var run = runOf[member.id];
+                var open = run && run.some(function (old) { return expandedVersions[old.id]; });
+                if (run && !open) {
+                  var ids = run.map(function (old) { return old.id; });
+                  var pile = {
+                    id: "pile:" + member.id,
+                    text: run.length + (run.length === 1 ? " earlier version" : " earlier versions"),
+                    children: [],
+                    pile: true,
+                    count: run.length,
+                    baseId: member.id,
+                    pileIds: ids,
+                    versionOf: member.versionOf ? chainedTo(member.versionOf) : undefined,
+                    members: run,
+                    row: member.row
+                  };
+                  ids.forEach(function (id) { foldedInto[id] = pile.id; });
+                  out.push(pile);
+                  i += run.length;
+                  continue;
+                }
+                // An open run is marked by its fold control (see foldSel),
+                // not by an idea of its own.
+                if (run && run[0] === member) {
+                  openRuns.push({
+                    baseId: member.id,
+                    headId: member.id,
+                    count: run.length,
+                    ids: run.map(function (old) { return old.id; })
+                  });
+                }
+                i++;
                 var already = wrapped[member.id];
-                if (already) { out.push(already); return; }
-                var versionOf = member.versionOf;
-                if (pile && collapsed.some(function (old) { return old.id === versionOf; })) versionOf = pile.id;
+                if (already) { out.push(already); continue; }
                 var copy = {
                   id: member.id, text: member.text, auto: member.auto,
-                  versionOf: versionOf, row: member.row, children: []
+                  versionOf: member.versionOf ? chainedTo(member.versionOf) : member.versionOf,
+                  row: member.row, children: []
                 };
                 wrapped[member.id] = copy;
                 out.push(copy);
                 copy.children = displayList(member.children);
-              });
+              }
             });
             return out;
           }
@@ -1874,7 +1904,7 @@
             node.versionOf = idea.versionOf || null;
             node.pile = !!idea.pile;
             node.pileCount = idea.count || 0;
-            node.pileBase = idea.baseId || null;
+            node.pileIds = idea.pileIds || null;
             node.adoptable = !!lastStatus[id];
             node.rank = rank; // this idea's current position among its siblings
             // True when this node existed before and has changed which of its
@@ -2024,7 +2054,7 @@
             .attr("class", "link-flow");
 
           foldSel = foldLayer.selectAll("g.fold-control")
-            .data(openChains, function (d) { return d.baseId; })
+            .data(openRuns, function (d) { return d.baseId; })
             .join(function (enter) {
               var g = enter.append("g")
                 .attr("class", "fold-control")
@@ -2038,9 +2068,9 @@
               // Two chevrons pointing together: this folds the chain back up.
               g.append("path").attr("class", "fold-mark").attr("d", "M-1.8,-2.9 L0,-1.1 L1.8,-2.9 M-1.8,2.9 L0,1.1 L1.8,2.9");
               g.append("title");
-              g.on("click", function (e, d) { togglePile(d.baseId); })
+              g.on("click", function (e, d) { togglePile(d.ids); })
                 .on("keydown", function (e, d) {
-                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePile(d.baseId); }
+                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePile(d.ids); }
                 });
               return g;
             });
@@ -2950,7 +2980,7 @@
       }
 
       interactions.onNodeTap = function (e, d) {
-        if (d.pile) { forest.togglePile(d.pileBase); return; }
+        if (d.pile) { forest.togglePile(d.pileIds); return; }
         var target = findIdea(d.id);
         if (!target) return;
         // Shift+click deletes immediately, skipping both the menu and the
