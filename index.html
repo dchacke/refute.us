@@ -186,14 +186,14 @@
      the ideas inside it until you open it. */
   .forest .node .stack { display: none; fill: var(--right); stroke: var(--label-dim); stroke-width: 1.5px; }
   .forest .node.is-pile .stack { display: block; }
-  /* A folded pile opens, so it carries a plus; the control that folds a chain
-     back up carries a minus (see .fold-control). */
+  /* A folded pile opens, so its chevrons point apart; the control that folds a
+     chain back up points them together (see .fold-control). */
   .forest .node .pile-mark { display: none; }
   .forest .node.is-pile .pile-mark {
     display: block;
     fill: none;
     stroke: var(--label-dim);
-    stroke-width: 1.6px;
+    stroke-width: 1.4px;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
@@ -210,7 +210,7 @@
   .forest .fold-control .fold-mark {
     fill: none;
     stroke: var(--label-dim);
-    stroke-width: 1.6px;
+    stroke-width: 1.4px;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
@@ -2025,7 +2025,8 @@
               g.append("circle").attr("class", "fold-ring far").attr("r", 6).attr("cx", -8).attr("cy", 4);
               g.append("circle").attr("class", "fold-ring mid").attr("r", 6).attr("cx", -4).attr("cy", 2);
               g.append("circle").attr("class", "fold-ring near").attr("r", 6);
-              g.append("path").attr("class", "fold-mark").attr("d", "M-3.5,-5.5 L0,-2 L3.5,-5.5 M-3.5,5.5 L0,2 L3.5,5.5");
+              // Two chevrons pointing together: this folds the chain back up.
+              g.append("path").attr("class", "fold-mark").attr("d", "M-2.5,-4 L0,-1.5 L2.5,-4 M-2.5,4 L0,1.5 L2.5,4");
               g.append("title");
               g.on("click", function (e, d) { togglePile(d.baseId); })
                 .on("keydown", function (e, d) {
@@ -2057,7 +2058,8 @@
               g.append("circle").attr("class", "stack stack-far");
               g.append("circle").attr("class", "stack stack-near");
               g.append("circle").attr("class", "core");
-              g.append("path").attr("class", "pile-mark").attr("d", "M-3.5,-2 L0,-5.5 L3.5,-2 M-3.5,2 L0,5.5 L3.5,2");
+              // Two chevrons pointing apart: this opens the pile.
+              g.append("path").attr("class", "pile-mark").attr("d", "M-2.5,-1.5 L0,-4 L2.5,-1.5 M-2.5,1.5 L0,4 L2.5,1.5");
               g.append("text");
               g.append("text").attr("class", "preview");
               g.call(drag)
