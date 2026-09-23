@@ -186,6 +186,21 @@
      the ideas inside it until you open it. */
   .forest .node .stack { display: none; fill: var(--right); stroke: var(--label-dim); stroke-width: 1.5px; }
   .forest .node.is-pile .stack { display: block; }
+
+  /* Folds an opened chain of versions back up. A control, not an idea: it
+     can't be dragged, and nothing about the discussion changes. */
+  .forest .fold-control { cursor: pointer; }
+  .forest .fold-control .hit { fill: transparent; stroke: none; }
+  .forest .fold-control .chevron {
+    fill: none;
+    stroke: var(--label-dim);
+    stroke-width: 2px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .forest .fold-control:hover .chevron,
+  .forest .fold-control:focus-visible .chevron { stroke: var(--label); }
+  .forest .fold-control:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   .forest .node.is-pile circle.core,
   .forest .node.is-pile:not(.is-adoptable) circle.core,
   .forest .node.is-pile.is-root:not(.is-adoptable) circle.core {
@@ -1085,10 +1100,12 @@
         var linkLayer = viewport.append("g");
         var linkFlowLayer = viewport.append("g"); // the "flowing toward parent" overlay, above the edges
         var versionLayer = viewport.append("g");  // ties between versions of the same idea
+        var foldLayer = viewport.append("g");     // the fold-these-away controls
         var nodeLayer = viewport.append("g");
         var linkSel = linkLayer.selectAll("path");
         var linkFlowSel = linkFlowLayer.selectAll("path");
         var versionSel = versionLayer.selectAll("path");
+        var foldSel = foldLayer.selectAll("g");
         var nodeSel = nodeLayer.selectAll("g");
 
         // Tapping empty space (the background rect, not a node or link) opens the
@@ -1137,6 +1154,15 @@
         // criticisms, the note saying they were superseded) goes with them.
         // Criticisms the live version still carries stay where they are.
         var expandedPiles = {};   // chain's first version id -> true while you've opened it
+        var openChains = [];      // the chains currently open, for their fold controls
+
+        // Opening a pile is a way of looking, not a change to the discussion,
+        // so it isn't saved with it.
+        function togglePile(baseId) {
+          if (expandedPiles[baseId]) delete expandedPiles[baseId];
+          else expandedPiles[baseId] = true;
+          update(lastTree, lastStatus);
+        }
 
         function isSuperseded(idea) {
           return idea.children.some(function (child) { return child.auto; });
@@ -1147,14 +1173,17 @@
         // has, so a shared criticism stays a single thing here too.
         function displayForest(list) {
           var wrapped = {};
+          openChains = [];
           function displayList(ideas) {
             var out = [];
             groupSiblings(ideas).forEach(function (group) {
               var members = group.members;
               var baseId = members[0].id;
-              var collapsed = expandedPiles[baseId] ? [] : members.filter(function (member, i) {
+              var foldable = members.filter(function (member, i) {
                 return i < members.length - 1 && isSuperseded(member);
               });
+              var open = !!expandedPiles[baseId];
+              var collapsed = open ? [] : foldable;
               var pile = null;
               if (collapsed.length) {
                 pile = {
@@ -1169,6 +1198,9 @@
                 };
                 out.push(pile);
               }
+              // An open chain is marked by the fold control (see foldSel), not
+              // by an idea of its own.
+              if (open && foldable.length) openChains.push({ baseId: baseId, headId: members[0].id, count: foldable.length });
               members.forEach(function (member) {
                 if (collapsed.indexOf(member) !== -1) return;
                 var already = wrapped[member.id];
@@ -1580,6 +1612,11 @@
           // Links leave a parent downward and arrive at the child from above.
           linkSel.attr("d", linkPath);
           versionSel.attr("d", versionPath);
+          // Each fold control rides just left of the first version it folds.
+          foldSel.attr("transform", function (d) {
+            var head = byId[d.headId];
+            return head ? "translate(" + (head.x - 30) + "," + head.y + ")" : "translate(-9999,-9999)";
+          });
           updateFlowShapes();
           nodeSel.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
         }
@@ -1958,6 +1995,29 @@
             .join("path")
             .attr("class", "link-flow");
 
+          foldSel = foldLayer.selectAll("g.fold-control")
+            .data(openChains, function (d) { return d.baseId; })
+            .join(function (enter) {
+              var g = enter.append("g")
+                .attr("class", "fold-control")
+                .attr("tabindex", 0)
+                .attr("role", "button");
+              g.append("circle").attr("class", "hit").attr("r", 12);
+              g.append("path").attr("class", "chevron").attr("d", "M2,-5 L-3,0 L2,5");
+              g.append("title");
+              g.on("click", function (e, d) { togglePile(d.baseId); })
+                .on("keydown", function (e, d) {
+                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePile(d.baseId); }
+                });
+              return g;
+            });
+          foldSel.select("title").text(function (d) {
+            return "Fold " + d.count + " earlier " + (d.count === 1 ? "version" : "versions") + " away";
+          });
+          foldSel.attr("aria-label", function (d) {
+            return "Fold " + d.count + " earlier " + (d.count === 1 ? "version" : "versions") + " away";
+          });
+
           versionSel = versionLayer.selectAll("path")
             .data(versionLinks, function (d) { return d.source.id + "~" + d.target.id; })
             .join("path")
@@ -2060,13 +2120,7 @@
             return (e && typeof e.clientX === "number") ? d3.pointer(e, viewport.node()) : null;
           },
           placeNewRoot: placeNewRoot,
-          // Opening a pile is a way of looking, not a change to the
-          // discussion, so it isn't saved with it.
-          togglePile: function (baseId) {
-            if (expandedPiles[baseId]) delete expandedPiles[baseId];
-            else expandedPiles[baseId] = true;
-            update(lastTree, lastStatus);
-          },
+          togglePile: togglePile,
           // The rows as currently shown, for saving with a new point in history.
           shownRows: function () {
             return { rowOf: rowOf, manual: shownManual, w: width, h: height };
