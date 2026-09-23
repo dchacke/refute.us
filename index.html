@@ -182,7 +182,7 @@
     }
   }
 
-  /* A folded-up run of superseded versions: a little stack, standing in for
+  /* A folded-up run of older versions: a little stack, standing in for
      the ideas inside it until you open it. */
   .forest .node .stack { display: none; fill: var(--right); stroke: var(--label-dim); stroke-width: 1.5px; }
   .forest .node.is-pile .stack { display: block; }
@@ -1166,11 +1166,12 @@
           return groups;
         }
 
-        // Once a version has been superseded it's out of the discussion, so a
-        // run of them folds into a single pile beside the version still in
-        // play -- and everything reachable only through them (their own
-        // criticisms, the note saying they were superseded) goes with them.
-        // Criticisms the live version still carries stay where they are.
+        // An older version that no longer stands on its own is out of the
+        // discussion, so a run of them folds into a single pile beside the
+        // versions still worth looking at -- and everything reachable only
+        // through them (their own criticisms, the note saying they were
+        // superseded) goes with them. Criticisms the versions still shown
+        // carry stay where they are.
         var expandedPiles = {};   // chain's first version id -> true while you've opened it
         var openChains = [];      // the chains currently open, for their fold controls
 
@@ -1182,8 +1183,19 @@
           update(lastTree, lastStatus);
         }
 
-        function isSuperseded(idea) {
-          return idea.children.some(function (child) { return child.auto; });
+        // Which versions of a chain fold away: the leading run of older ones
+        // that aren't rationally adoptable. It doesn't matter whether what
+        // knocked them out was the note the revision filed automatically or a
+        // criticism you typed yourself -- folding follows the same rule the
+        // rest of the page does. An older version nothing has knocked out
+        // stays in view, and so does the newest one, however it's faring.
+        function foldableRun(members) {
+          var run = [];
+          for (var i = 0; i < members.length - 1; i++) {
+            if (lastStatus[members[i].id]) break;
+            run.push(members[i]);
+          }
+          return run;
         }
 
         // What's actually drawn, given the ideas themselves. Ideas are wrapped
@@ -1197,9 +1209,7 @@
             groupSiblings(ideas).forEach(function (group) {
               var members = group.members;
               var baseId = members[0].id;
-              var foldable = members.filter(function (member, i) {
-                return i < members.length - 1 && isSuperseded(member);
-              });
+              var foldable = foldableRun(members);
               var open = !!expandedPiles[baseId];
               var collapsed = open ? [] : foldable;
               var pile = null;
@@ -2099,7 +2109,7 @@
             .classed("is-pile", function (d) { return d.pile; })
             .classed("is-adoptable", function (d) { return d.adoptable; })
             .attr("aria-label", function (d) {
-              if (d.pile) return d.text + ", superseded. Activate to open.";
+              if (d.pile) return d.text + ", none of them adoptable. Activate to open.";
               return "Idea: " + d.text + ". " + statusText(d) + ". Activate to add a criticism.";
             });
           nodeSel.select("circle.core").attr("r", radius);
