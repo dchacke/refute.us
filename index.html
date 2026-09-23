@@ -868,8 +868,14 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
   <script>
     (function () {
-      var STORAGE_KEY = "ideas";       // legacy key, read only, for migration
-      var HISTORY_KEY = "ideas-history-v1";
+      // What's stored is a discussion. Which shape it's in belongs inside the
+      // envelope, which carries `version`, not in the name of the key.
+      var STORE_KEY = "discussion";
+      // Keys this page saved under before. The envelope is read once so a
+      // workbench that still has it carries over; "ideas" held the format from
+      // before the timeline existed and is only cleared away.
+      var OLD_STORE_KEY = "ideas-history-v1";
+      var OLD_IDEAS_KEY = "ideas";
       // The ideas, as a graph: each idea is { id, text, children: [idea, ...] },
       // and an idea can appear as a child of more than one parent (the same
       // criticism applying to two versions of an idea). Children are held by
@@ -2454,9 +2460,26 @@
       var history = [];
       var cursor = -1;
 
-      function loadHistory() {
+      // Clears away the keys this page used to save under, once whatever was
+      // in them has been read.
+      function retireOldKeys() {
         try {
-          var raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || "null");
+          localStorage.removeItem(OLD_STORE_KEY);
+          localStorage.removeItem(OLD_IDEAS_KEY);
+        } catch (err) {
+          /* storage unavailable: nothing to clear away */
+        }
+      }
+
+      function loadHistory() {
+        var carriedOver = false;
+        try {
+          var stored = localStorage.getItem(STORE_KEY);
+          if (stored === null) {
+            stored = localStorage.getItem(OLD_STORE_KEY);
+            carriedOver = stored !== null;
+          }
+          var raw = JSON.parse(stored || "null");
           var state = migrateStoredState(raw).state;
           if (state && state.ui && typeof state.ui.legendOpen === "boolean") ui.legendOpen = state.ui.legendOpen;
           if (state && Array.isArray(state.history) && state.history.length) {
@@ -2479,6 +2502,8 @@
             cursor = Math.min(Math.max(0, state.cursor | 0), history.length - 1);
             roots = graphToIdeas(history[cursor].snapshot);
             rowsMeta = copyRowsMeta(history[cursor].rows);
+            if (carriedOver) saveHistory();
+            retireOldKeys();
             return;
           }
         } catch (err) {
@@ -2488,23 +2513,15 @@
           alert("Your saved discussion couldn't be loaded, so this page is starting fresh.");
         }
 
-        // Migrate from the format used before the timeline existed, if present.
-        var seed = [];
-        try {
-          var legacy = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-          if (Array.isArray(legacy)) seed = legacy.map(normalize).filter(Boolean);
-        } catch (err) {
-          /* start empty */
-        }
-
-        roots = seed;
-        history = [{ snapshot: ideasToGraph(seed), type: "start", detail: {}, time: Date.now() }];
+        retireOldKeys();
+        roots = [];
+        history = [{ snapshot: ideasToGraph([]), type: "start", detail: {}, time: Date.now() }];
         cursor = 0;
       }
 
       function saveHistory() {
         try {
-          localStorage.setItem(HISTORY_KEY, JSON.stringify({
+          localStorage.setItem(STORE_KEY, JSON.stringify({
             version: CURRENT_VERSION,
             state: { history: history, cursor: cursor, ui: { legendOpen: ui.legendOpen } }
           }));
@@ -3259,8 +3276,7 @@
             history = [{ snapshot: { roots: [], nodes: [], edges: [] }, type: "start", detail: {}, time: Date.now() }];
             cursor = 0;
             try {
-              localStorage.removeItem(HISTORY_KEY);
-              localStorage.removeItem(STORAGE_KEY);
+              localStorage.removeItem(STORE_KEY);
             } catch (err) {
               /* storage unavailable: in-memory state is still reset */
             }
