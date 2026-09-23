@@ -1249,7 +1249,9 @@
                   var ids = run.map(function (old) { return old.id; });
                   var pile = {
                     id: "pile:" + member.id,
-                    text: run.length + (run.length === 1 ? " earlier version" : " earlier versions"),
+                    text: run.length === 1
+                      ? "1 version with a pending criticism"
+                      : run.length + " versions with pending criticisms",
                     children: [],
                     pile: true,
                     count: run.length,
@@ -1898,7 +1900,7 @@
         // Shared by the tooltip and each node's aria-label, so a screen
         // reader hears the same status a sighted user sees on hover.
         function statusText(d) {
-          if (d.pile) return "Folded away. Tap to open.";
+          if (d.pile) return "Tap to open.";
           var detail = d.adoptable
             ? "(no pending criticisms)"
             : "(" + d.pendingCount + " pending " + (d.pendingCount === 1 ? "criticism" : "criticisms") + ")";
@@ -2116,12 +2118,11 @@
             });
           foldSel.select("circle.far").attr("opacity", function (d) { return d.count > 2 ? 1 : 0; });
           foldSel.select("circle.mid").attr("opacity", function (d) { return d.count > 1 ? 1 : 0; });
-          foldSel.select("title").text(function (d) {
-            return "Fold " + d.count + " earlier " + (d.count === 1 ? "version" : "versions") + " away";
-          });
-          foldSel.attr("aria-label", function (d) {
-            return "Fold " + d.count + " earlier " + (d.count === 1 ? "version" : "versions") + " away";
-          });
+          var foldLabel = function (d) {
+            return "Fold " + d.count + " " + (d.count === 1 ? "version" : "versions") + " away";
+          };
+          foldSel.select("title").text(foldLabel);
+          foldSel.attr("aria-label", foldLabel);
 
           versionSel = versionLayer.selectAll("path")
             .data(versionLinks, function (d) { return d.source.id + "~" + d.target.id; })
@@ -2179,7 +2180,7 @@
             .classed("is-pile", function (d) { return d.pile; })
             .classed("is-adoptable", function (d) { return d.adoptable; })
             .attr("aria-label", function (d) {
-              if (d.pile) return d.text + ", none of them adoptable. Activate to open.";
+              if (d.pile) return d.text + ". Activate to open.";
               return "Idea: " + d.text + ". " + statusText(d) + ". Activate to add a criticism.";
             });
           nodeSel.select("circle.core").attr("r", radius);
