@@ -123,6 +123,8 @@
   }
 
   .forest .node { cursor: grab; }
+  /* A pile isn't dragged, it's opened. */
+  .forest .node.is-pile { cursor: pointer; }
   .forest .node:focus { outline: none; }
 
   /* While a node is being dragged, show a "grabbing" cursor everywhere
@@ -130,6 +132,7 @@
      outrun the node during a fast drag). */
   .forest.is-dragging,
   .forest.is-dragging .node { cursor: grabbing; }
+  .forest.is-dragging .node.is-pile { cursor: pointer; }
 
   .forest .node circle.core {
     fill: var(--node-crit);
@@ -1699,12 +1702,9 @@
 
         // Two versions sit side by side on the same row, so their tie is drawn
         // as a shallow arc dipping below the line between them, clear of the
-        // titles above and of the criticisms hanging underneath. A pile has
-        // neither, and sits level rather than staggered, so its ties are drawn
-        // straight -- there's nothing for them to go around.
+        // titles above and of the criticisms hanging underneath.
         function versionPath(d) {
           var sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
-          if (d.source.pile || d.target.pile) return "M" + sx + "," + sy + "L" + tx + "," + ty;
           var mx = (sx + tx) / 2, my = (sy + ty) / 2 + Math.min(26, Math.abs(tx - sx) / 6 + 10);
           return "M" + sx + "," + sy + "Q" + mx + "," + my + " " + tx + "," + ty;
         }
@@ -1720,24 +1720,27 @@
           // close (an odd-sized run, or a run of one) it takes the left one.
           // A run that starts the chain is the exception: its pile stood out
           // to the left of everything, so its control stays there too.
+          //
+          // Which edge it takes is settled by counting versions, not by where
+          // they currently are: the versions of a run that has just opened are
+          // still drifting into place, and a choice made from their positions
+          // changes under them as they arrive.
           foldSel.attr("transform", function (d) {
-            var shown = d.ids.map(function (id) { return byId[id]; }).filter(Boolean);
-            if (!shown.length) return "translate(-9999,-9999)";
+            var chain = d.ids.map(function (id) { return byId[id]; });
+            if (chain.some(function (node) { return !node; })) return "translate(-9999,-9999)";
             var before = d.prevId ? byId[d.prevId] : null;
-            var best = null;
-            if (before) {
-              var chain = shown.slice();
-              chain.unshift(before);
-              var middle = (shown[0].x + shown[shown.length - 1].x) / 2;
-              var bestGap = Infinity;
-              for (var i = 0; i + 1 < chain.length; i++) {
-                var mid = { x: (chain[i].x + chain[i + 1].x) / 2, y: (chain[i].y + chain[i + 1].y) / 2 };
-                var gap = Math.abs(mid.x - middle);
-                if (gap < bestGap - 0.5) { best = mid; bestGap = gap; }
-              }
+            if (!before) return "translate(" + (chain[0].x - 30) + "," + chain[0].y + ")";
+            chain.unshift(before);
+            // chain is [the version before the run, then the run itself], so
+            // the run spans indices 1..n and its middle is (1 + n) / 2. Edge i
+            // joins chain[i] and chain[i + 1], sitting at i + 0.5.
+            var n = chain.length - 1, middle = (1 + n) / 2, pick = 0, bestGap = Infinity;
+            for (var i = 0; i < n; i++) {
+              var gap = Math.abs(i + 0.5 - middle);
+              if (gap < bestGap - 1e-9) { pick = i; bestGap = gap; }
             }
-            if (!best) best = { x: shown[0].x - 30, y: shown[0].y };
-            return "translate(" + best.x + "," + best.y + ")";
+            var a = chain[pick], b = chain[pick + 1];
+            return "translate(" + ((a.x + b.x) / 2) + "," + ((a.y + b.y) / 2) + ")";
           });
           updateFlowShapes();
           nodeSel.attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; });
@@ -1888,6 +1891,10 @@
         }
 
         var drag = d3.drag()
+          // A pile is a control, not an idea: dragging it would be dragging a
+          // way of looking at the chain. Dragging any version still carries
+          // the whole chain, piles included, so nothing is lost.
+          .filter(function (e, d) { return !d.pile && !e.ctrlKey && !e.button; })
           .on("start", function (e, d) {
             if (!e.active) sim.alphaTarget(0.3).restart();
             d.fx = d.x; d.fy = d.y;
@@ -2098,9 +2105,14 @@
           // business, not a spring's.
           var versionLinks = [];
           nodes.forEach(function (node) {
-            if (node.versionOf && next[node.versionOf]) {
-              versionLinks.push({ source: next[node.versionOf], target: node });
-            }
+            var from = node.versionOf && next[node.versionOf];
+            if (!from) return;
+            // A pile that starts a chain has nothing on its left, so a tie out
+            // of it would be the only thing tethering it to the version beside
+            // it -- and the fold control that replaces it when the run opens
+            // draws no tie either.
+            if (from.pile && !from.versionOf) return;
+            versionLinks.push({ source: from, target: node });
           });
 
           sim.nodes(nodes);
