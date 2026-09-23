@@ -1342,14 +1342,23 @@
             if (!owned.length) return null;
             return owned.reduce(function (a, group) { return a + group.center; }, 0) / owned.length;
           });
-          // A pile takes the same room as a version beside it: the titles of
-          // the versions on either side are what need the space, and they run
-          // wider than a disc.
+          // A member with no criticisms of its own -- a pile always, a version
+          // sometimes -- has no child group to sit over, so it takes its place
+          // from a neighbour: from the one on its left, or, for the ones that
+          // start the chain, by working back from the first member that does
+          // have a place. Putting such a member over the first child group
+          // instead would sit it above a criticism belonging to a later
+          // version and push that version off its own children.
+          var anchor = -1;
           for (var i = 0; i < memberXs.length; i++) {
-            if (memberXs[i] === null) {
-              memberXs[i] = i === 0 ? (childGroups.length ? childGroups[0].center : 0) : memberXs[i - 1] + MEMBER_GAP;
+            if (memberXs[i] !== null) { anchor = i; break; }
+          }
+          if (anchor === -1) { memberXs[0] = 0; anchor = 0; }
+          for (var i = anchor - 1; i >= 0; i--) memberXs[i] = memberXs[i + 1] - MEMBER_GAP;
+          for (var i = anchor + 1; i < memberXs.length; i++) {
+            if (memberXs[i] === null || memberXs[i] < memberXs[i - 1] + MEMBER_GAP) {
+              memberXs[i] = memberXs[i - 1] + MEMBER_GAP;
             }
-            if (i > 0 && memberXs[i] < memberXs[i - 1] + MEMBER_GAP) memberXs[i] = memberXs[i - 1] + MEMBER_GAP;
           }
           // Only titled versions take a turn in the up/down alternation, so
           // the two versions flanking a pile still land at different heights
