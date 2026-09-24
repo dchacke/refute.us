@@ -1750,9 +1750,15 @@
           for (var fwd = k2 + 1; fwd < mine.length && !neighborId; fwd++) {
             if (moved.indexOf(mine[fwd]) === -1) neighborId = mine[fwd];
           }
+          // The idea it landed beside is named the same way: by the version
+          // in play, which may not be the one the row happened to list.
+          var besideChain = neighborId
+            ? (groupMembers[groupLeader[neighborId] || neighborId] || [neighborId]) : [];
+          var besideId = besideChain.length ? besideChain[besideChain.length - 1] : null;
           return {
             text: (byIdea[movedId] || d).text,
-            neighborText: (neighborId && byIdea[neighborId]) ? byIdea[neighborId].text : null,
+            neighborText: (besideId && byIdea[besideId]) ? byIdea[besideId].text : null,
+            neighborVersions: besideChain.length,
             placement: landedAfter ? "after" : "before"
           };
         }
@@ -2079,9 +2085,18 @@
           var beside = placed[movedForward ? mine - 1 : mine + 1];
           if (parent) parent.children = reordered;
           else roots = reordered;
+          // Both ideas are named by the version in play, the way a top-level
+          // move already names them: versions of one idea are one idea, and
+          // what it's called is the version that survived -- the one on
+          // screen. The older ones are usually folded away, so naming the
+          // chain by its first version would name something invisible.
+          var mineMembers = placed[mine].group.members;
           return {
-            text: d.text,
-            neighborText: beside ? beside.group.members[0].text : null,
+            text: mineMembers[mineMembers.length - 1].text,
+            neighborText: beside ? beside.group.members[beside.group.members.length - 1].text : null,
+            // More than one version means the move went past the whole chain,
+            // which "before X" alone could read as landing inside it.
+            neighborVersions: beside ? beside.group.members.length : 0,
             placement: movedForward ? "after" : "before"
           };
         }
@@ -2683,7 +2698,13 @@
               (d.count > 0 ? " (+" + d.count + (d.count === 1 ? " criticism)" : " criticisms)") : "");
           case "reorder":
             if (!d.neighborText) return "Moved “" + preview(d.text || "", 24) + "” to a new row";
-            return "Moved “" + preview(d.text || "", 20) + "” " + d.placement + " “" + preview(d.neighborText || "", 20) + "”";
+            // An idea with several versions moves as one, so a move past it
+            // goes past all of them -- saying so keeps "before X" from
+            // reading as "in among X's versions".
+            var past = d.neighborVersions > 1
+              ? "the versions of “" + preview(d.neighborText || "", 20) + "”"
+              : "“" + preview(d.neighborText || "", 20) + "”";
+            return "Moved “" + preview(d.text || "", 20) + "” " + d.placement + " " + past;
           default:
             return entry.summary || "Event";
         }
