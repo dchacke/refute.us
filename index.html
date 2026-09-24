@@ -844,6 +844,26 @@
       </div>
       <span class="timeline-hint" id="timeline-hint" aria-hidden="true"><span id="timeline-hint-text">Scrub to time-travel.</span></span>
     </footer>
+    <script>
+      // Reads the same key as STORE_KEY below -- the two have to change
+      // together. The timeline is only shown once there's more than one point in it, but
+      // that decision normally waits on the rest of the page -- including the
+      // d3 download -- by which time the footer has already been painted and
+      // has to be taken away again. This runs the moment the footer is parsed,
+      // so a first visit never sees it at all. It's a peek, not the real load:
+      // updateTimelineUI() settles this properly either way, so anything
+      // unexpected here just leaves the footer as the markup had it.
+      (function () {
+        try {
+          var stored = JSON.parse(localStorage.getItem("discussion") || "null");
+          var state = (stored && stored.state) || stored;
+          var points = state && state.history;
+          document.getElementById("timeline").hidden = !(points && points.length > 1);
+        } catch (err) {
+          /* unreadable: leave it as it is and let the page sort it out */
+        }
+      })();
+    </script>
   </div>
 
   <div class="modal-backdrop" id="modal-backdrop" hidden>
@@ -869,7 +889,9 @@
   <script>
     (function () {
       // What's stored is a discussion. Which shape it's in belongs inside the
-      // envelope, which carries `version`, not in the name of the key.
+      // envelope, which carries `version`, not in the name of the key. The
+      // small script under the timeline footer peeks at this same key before
+      // the page loads, so change both together.
       var STORE_KEY = "discussion";
       // The ideas, as a graph: each idea is { id, text, children: [idea, ...] },
       // and an idea can appear as a child of more than one parent (the same
