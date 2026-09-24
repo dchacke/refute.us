@@ -118,8 +118,14 @@
 
   @media (prefers-reduced-motion: no-preference) {
     .forest .link-flow {
-      animation: adopt-glow 2.6s ease-in-out infinite;
+      animation: flow-pulse 2.6s ease-in-out infinite;
     }
+  }
+
+  /* Same pulse as the halo, in the one property SVG animates everywhere. */
+  @keyframes flow-pulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.95; }
   }
 
   .forest .node { cursor: grab; }
@@ -178,9 +184,17 @@
     stroke-width: 2.5px;
   }
 
-  /* A slow, subtle glow/pulse marks rationally adoptable nodes as "live". */
+  /* A slow, subtle glow/pulse marks rationally adoptable nodes as "live".
+     The halo is an ordinary circle with a soft radial fill, pulsed by its
+     opacity -- see the note where it's built. */
+  .forest .node .halo {
+    fill: url(#halo-fade);
+    stroke: none;
+    opacity: 0;
+    pointer-events: none;
+  }
   @media (prefers-reduced-motion: no-preference) {
-    .forest .node.is-adoptable circle.core {
+    .forest .node.is-adoptable .halo {
       animation: adopt-glow 2.6s ease-in-out infinite;
     }
   }
@@ -243,8 +257,8 @@
   }
 
   @keyframes adopt-glow {
-    0%, 100% { filter: drop-shadow(0 0 0px rgba(255, 255, 255, 0)); }
-    50% { filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7)); }
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
   }
 
   .forest .node text {
@@ -1145,6 +1159,17 @@
         var wasEmpty = true;    // any pan/zoom while there was nothing to see shouldn't stick
 
         var svg = d3.select("#forest");
+        // The "live" glow is drawn as a real circle filled with a soft radial
+        // fade, and pulsed by animating its opacity. It used to be an animated
+        // CSS drop-shadow filter, which WebKit doesn't animate on SVG elements
+        // -- on iOS nothing glowed at all. Opacity is animatable everywhere.
+        (function () {
+          var defs = svg.append("defs");
+          var glow = defs.append("radialGradient").attr("id", "halo-fade");
+          glow.append("stop").attr("offset", "48%").attr("stop-color", "#fff").attr("stop-opacity", 0.42);
+          glow.append("stop").attr("offset", "74%").attr("stop-color", "#fff").attr("stop-opacity", 0.16);
+          glow.append("stop").attr("offset", "100%").attr("stop-color", "#fff").attr("stop-opacity", 0);
+        })();
         var bg = svg.append("rect").attr("class", "bg").attr("width", "100%").attr("height", "100%");
         var viewport = svg.append("g");
         var linkLayer = viewport.append("g");
@@ -1209,10 +1234,13 @@
         // discussion, so a run of them folds into a single pile beside the
         // versions still worth looking at -- and everything reachable only
         // through them (their own criticisms, the note saying they were
-        // superseded) goes with them. Criticisms the versions still shown
+        // replaced) goes with them. Criticisms the versions still shown
         // carry stay where they are.
         // What you've said about each version: true if you opened its run,
-        // false if you folded it, nothing if you haven't touched it. One entry
+        // false if you folded it, nothing if you haven't touched it. Folding
+        // one away is about the step you were looking at, so it's forgotten
+        // when you move to another (see forgetHandFolds); opening one is a
+        // standing preference and is kept. One entry
         // per version rather than one per pile, because a run can split when
         // you answer a criticism inside it and two runs can merge when you
         // criticize the version between them -- keeping the mark on the
@@ -1227,6 +1255,15 @@
           var open = runIsOpen(ids);
           ids.forEach(function (id) { expandedVersions[id] = !open; });
           update(lastTree, lastStatus, lastTouched);
+        }
+
+        // Moving along the timeline retires the runs you folded by hand: the
+        // next step may be about what one of them holds, and a fold made
+        // while looking at a different step shouldn't hide that.
+        function forgetHandFolds() {
+          Object.keys(expandedVersions).forEach(function (id) {
+            if (expandedVersions[id] === false) delete expandedVersions[id];
+          });
         }
 
         // Whether a run is showing: what you last said about it, and failing
@@ -1544,20 +1581,43 @@
             if (r > lastRow) { saved.push(0); lastRow = r; }
             saved[saved.length - 1] += 1;
           }
-          if (!saved || !anySaved) { shownManual = false; return best; }
+          if (!saved || !anySaved) { shownManual = false; return keepOrChoose(blocks, best); }
 
-          // Rows you arranged yourself are shown as-is while the pane is
-          // about the size it was then; otherwise saved rows are shown only
-          // while they're not noticeably worse than the best fit.
+          // Saved rows are shown as-is while the pane is about as wide as it
+          // was when they were saved; otherwise only while they're not
+          // noticeably worse than the best fit.
+          //
+          // Only the width is compared. Height changes on its own for reasons
+          // that have nothing to do with the layout -- above all a phone's
+          // keyboard opening -- and rearranging someone's trees while they
+          // are in the middle of typing is far worse than a row that doesn't
+          // fill the space. Width is what decides how many trees sit side by
+          // side anyway.
           var meta = rowsMeta || {};
-          var sameSize = meta.w > 0 && meta.h > 0 &&
-            Math.abs(width - meta.w) <= meta.w * 0.2 &&
-            Math.abs(height - meta.h) <= meta.h * 0.2;
-          if ((meta.manual && sameSize) || rowsScale(blocks, saved) >= bestScale * 0.85) {
+          var sameWidth = meta.w > 0 && Math.abs(width - meta.w) <= meta.w * 0.2;
+          if (sameWidth || rowsScale(blocks, saved) >= bestScale * 0.85) {
             shownManual = !!meta.manual;
+            lastChosen = { counts: saved, trees: blocks.length, w: width };
             return saved;
           }
           shownManual = false;
+          return keepOrChoose(blocks, best);
+        }
+
+        // The rows last settled on, and how wide the pane was then. Height
+        // changes on its own for reasons that have nothing to do with the
+        // layout -- a phone's keyboard opening, an address bar collapsing --
+        // and rearranging the page because of that moves someone's trees
+        // around while they are only trying to type. So while the pane is
+        // about as wide and holds the same trees, the arrangement stands;
+        // a change in width, or a tree added or removed, picks again.
+        var lastChosen = null;
+        function keepOrChoose(blocks, best) {
+          if (lastChosen && lastChosen.trees === blocks.length && lastChosen.w > 0 &&
+              Math.abs(width - lastChosen.w) <= lastChosen.w * 0.2) {
+            return lastChosen.counts;
+          }
+          lastChosen = { counts: best, trees: blocks.length, w: width };
           return best;
         }
 
@@ -1947,9 +2007,15 @@
         // were written, and can't be shuffled among themselves. Returns a
         // detail object describing the move (for the history entry) when the
         // drop actually changed the order, or null if it didn't.
-        function reorderSiblingsByPosition(d) {
+        function reorderSiblingsByPosition(d, x, y) {
           var parent = d.parentId ? findIdea(d.parentId) : null;
           var list = parent ? parent.children : roots;
+          // A criticism can only be reordered among its own siblings, so a
+          // drag that ends up among another idea's criticisms is asking for
+          // something this can't do. Rather than half-doing it -- shuffling
+          // the dragged one past its own siblings on the way out, and
+          // recording that as the move -- nothing happens at all.
+          if (!landedAmongSiblings(d, list, x, y)) return null;
           var groups = groupSiblings(list);
           var placed = groups.map(function (group, i) {
             var xs = group.members
@@ -1985,6 +2051,23 @@
           };
         }
 
+        // Whether a drop belongs to the dragged idea's own family: the node
+        // nearest where it was let go is one of its siblings, or the parent
+        // they all hang from.
+        function landedAmongSiblings(d, list, x, y) {
+          var family = { };
+          list.forEach(function (idea) { family[idea.id] = true; });
+          if (d.parentId) family[d.parentId] = true;
+          var nearest = null, best = Infinity;
+          Object.keys(byId).forEach(function (id) {
+            var node = byId[id];
+            if (id === d.id || typeof node.x !== "number") return;
+            var gap = Math.hypot(node.x - x, node.y - y);
+            if (gap < best) { best = gap; nearest = node; }
+          });
+          return !nearest || !!family[nearest.id];
+        }
+
         var drag = d3.drag()
           // A pile is a control, not an idea: dragging it would be dragging a
           // way of looking at the chain. Dragging any version still carries
@@ -2007,7 +2090,7 @@
             if (Math.hypot(e.x - d.dragStartX, e.y - d.dragStartY) < 8) return;
             // Top-level ideas move between/within rows; criticisms reorder
             // among their siblings.
-            var moveDetail = d.depth === 0 ? moveRootByPosition(d, e.x, e.y) : reorderSiblingsByPosition(d);
+            var moveDetail = d.depth === 0 ? moveRootByPosition(d, e.x, e.y) : reorderSiblingsByPosition(d, e.x, e.y);
             if (moveDetail) commit("reorder", moveDetail);
           });
 
@@ -2285,6 +2368,7 @@
                 .attr("class", "node")
                 .attr("tabindex", 0)
                 .attr("role", "img");
+              g.append("circle").attr("class", "halo");
               g.append("circle").attr("class", "stack stack-far");
               g.append("circle").attr("class", "stack stack-near");
               g.append("circle").attr("class", "core");
@@ -2333,6 +2417,7 @@
               return "Idea: " + d.text + ". " + statusText(d) + ". Activate to add a criticism.";
             });
           nodeSel.select("circle.core").attr("r", radius);
+          nodeSel.select("circle.halo").attr("r", function (d) { return radius(d) + 8; });
           // The stack sits behind and to the left, so a pile reads as several
           // ideas folded into one.
           nodeSel.select("circle.stack-far")
@@ -2378,6 +2463,7 @@
           },
           placeNewRoot: placeNewRoot,
           togglePile: togglePile,
+          forgetHandFolds: forgetHandFolds,
           // The rows as currently shown, for saving with a new point in history.
           shownRows: function () {
             return { rowOf: rowOf, manual: shownManual, w: width, h: height };
@@ -2547,7 +2633,7 @@
           case "revise":
             return "Revised “" + preview(d.ofText || "", 20) + "” to “" + preview(d.text || "", 20) + "”";
           case "add-criticism":
-            return "Submitted criticism “" + preview(d.text || "", 24) + "”";
+            return "Added criticism “" + preview(d.text || "", 24) + "”";
           case "delete":
             return "Deleted “" + preview(d.text || "", 24) + "”" +
               (d.count > 0 ? " (+" + d.count + (d.count === 1 ? " criticism)" : " criticisms)") : "");
@@ -2577,7 +2663,7 @@
 
       var emptyHint = document.getElementById("empty-hint");
       var HINT_FIRST = "Tap anywhere in empty space to add your first idea.";
-      var HINT_SECOND = "Tap anywhere in empty space to add another idea. Tap an idea to criticize it.";
+      var HINT_SECOND = "Tap anywhere in empty space to add another idea. Tap an idea to criticize, revise, or delete it.";
 
       function countIdeas(list) {
         return allIdeas(list).length;
@@ -2686,6 +2772,14 @@
       // Jumps the whole page to how it looked at a given point in the timeline.
       function restoreTo(index) {
         if (index < 0 || index >= history.length) return;
+        if (index !== cursor && forest) {
+          forest.forgetHandFolds();
+          // Whatever you had zoomed in on, the step you are moving to may
+          // have happened somewhere else entirely -- and a change you can't
+          // see is the same as no change at all. Moving along the timeline
+          // puts the whole discussion back in view and keeps it there.
+          forest.fit();
+        }
         cursor = index;
         roots = graphToIdeas(history[index].snapshot);
         rowsMeta = copyRowsMeta(history[index].rows);
@@ -3108,8 +3202,8 @@
         });
       };
 
-      var SUPERSEDE_KEY = "__supersede";
-      var SUPERSEDED_TEXT = "This idea has been superseded by a later revision. (Added automatically.)";
+      var REPLACE_KEY = "__replace";
+      var REPLACED_TEXT = "This idea has been replaced by a later revision. (Added automatically.)";
 
       function criticizeIdea(target) {
         openModal({
@@ -3128,11 +3222,11 @@
       // Revising never overwrites: it adds a new version of the idea beside
       // the old one, carrying over whichever criticisms you say still apply
       // (they stay one criticism, now attacking both versions). Saying the
-      // revision supersedes the old version files a criticism to that effect
+      // revision replaces the old version files a criticism to that effect
       // against it, so the old version stops being adoptable by the ordinary
       // rule rather than by a special case.
       function reviseIdea(target) {
-        // A "superseded" note is about the one version it was filed against,
+        // A "replaced" note is about the one version it was filed against,
         // so it isn't offered for carrying over to the new one.
         var kids = target.children.filter(function (child) { return !child.auto; });
         // Versions run in one line, so a revision always joins the end of the
@@ -3151,10 +3245,10 @@
         }
         checks.push({
           head: restoring ? "The version in play" : "This version",
-          key: SUPERSEDE_KEY,
+          key: REPLACE_KEY,
           label: restoring
-            ? "The revision supersedes “" + preview(live.text, 40) + "”"
-            : "The revision supersedes it",
+            ? "The revision replaces “" + preview(live.text, 40) + "”"
+            : "The revision replaces it",
           note: "Files a criticism saying so, so it stops being adoptable.",
           checked: true
         });
@@ -3178,11 +3272,11 @@
             });
             var atRoot = roots.indexOf(live);
             if (atRoot !== -1) roots.splice(atRoot + 1, 0, revision);
-            var supersedes = ticked.indexOf(SUPERSEDE_KEY) !== -1;
-            if (supersedes) {
-              live.children.push({ id: uid(), text: SUPERSEDED_TEXT, children: [], auto: true });
+            var replaces = ticked.indexOf(REPLACE_KEY) !== -1;
+            if (replaces) {
+              live.children.push({ id: uid(), text: REPLACED_TEXT, children: [], auto: true });
             }
-            commit("revise", { text: text, ofText: target.text, supersedes: supersedes });
+            commit("revise", { text: text, ofText: target.text, replaces: replaces });
           }
         });
       }
