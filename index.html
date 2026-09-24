@@ -2059,6 +2059,13 @@
           if (!landedAmongSiblings(d, list, x, y)) return null;
           var groups = groupSiblings(list);
           var placed = groups.map(function (group, i) {
+            // Versions of one idea move together, so the one being dragged
+            // speaks for its whole chain. Averaging it with the versions
+            // standing still would hold the chain back where it was, however
+            // far the dragged one is taken -- which is why an open chain
+            // wouldn't move at all.
+            var holding = group.members.some(function (member) { return member.id === d.id; });
+            if (holding && byId[d.id]) return { group: group, was: i, x: byId[d.id].x };
             var xs = group.members
               .map(function (member) { return byId[member.id]; })
               .filter(Boolean)
