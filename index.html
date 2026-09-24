@@ -2088,11 +2088,17 @@
 
         // Whether a drop belongs to the dragged idea's own family: the node
         // nearest where it was let go is one of its siblings, or the parent
-        // they all hang from.
+        // they all hang from. A pile counts as whichever siblings it stands
+        // for -- it is where they are, so dropping beside one is dropping
+        // beside them.
         function landedAmongSiblings(d, list, x, y) {
           var family = { };
           list.forEach(function (idea) { family[idea.id] = true; });
           if (d.parentId) family[d.parentId] = true;
+          function ofTheFamily(node) {
+            if (family[node.id]) return true;
+            return !!(node.pileIds && node.pileIds.some(function (id) { return family[id]; }));
+          }
           var nearest = null, best = Infinity;
           Object.keys(byId).forEach(function (id) {
             var node = byId[id];
@@ -2100,7 +2106,7 @@
             var gap = Math.hypot(node.x - x, node.y - y);
             if (gap < best) { best = gap; nearest = node; }
           });
-          return !nearest || !!family[nearest.id];
+          return !nearest || ofTheFamily(nearest);
         }
 
         var drag = d3.drag()
