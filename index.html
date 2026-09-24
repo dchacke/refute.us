@@ -661,7 +661,7 @@
   }
 
   .modal-checks {
-    margin: 0.9rem 0 0;
+    margin: 0;
     padding: 0;
     list-style: none;
     display: flex;
@@ -670,6 +670,12 @@
   }
 
   .modal-checks li { display: flex; }
+  /* Both of these set their own display, which beats the browser's rule for
+     [hidden] -- without this they keep their place in the form when empty,
+     each one adding a gap and leaving a hole between the parts on either
+     side of it. */
+  .modal-checks[hidden],
+  .modal-menu[hidden] { display: none; }
 
   .modal-check {
     display: flex;
@@ -693,11 +699,12 @@
     color: var(--muted);
   }
 
+  /* The form's own gap sets the space between the parts of a modal, so
+     neither this nor .modal-checks adds any of its own. */
   .modal-menu {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    margin-top: 0.75rem;
   }
 
   .modal-menu .modal-btn { width: 100%; }
