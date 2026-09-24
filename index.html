@@ -110,22 +110,37 @@
      brightening rather than a visibly separate shape, which is the effect
      we want. */
   .forest .link-flow {
-    fill: color-mix(in srgb, var(--node-crit) 85%, white);
+    fill: color-mix(in srgb, var(--node-crit) 45%, white);
     stroke: none;
     opacity: 0.9;
     pointer-events: none;
   }
 
+  /* The soft light around the moving shape, in two layers: each wider,
+     longer and fainter than the one on top of it, so the stack fades out
+     rather than ending in an edge. */
+  .forest .link-flow-near,
+  .forest .link-flow-far {
+    fill: color-mix(in srgb, var(--node-crit) 60%, white);
+    stroke: none;
+    pointer-events: none;
+  }
+  .forest .link-flow-near { opacity: 0.2; }
+  .forest .link-flow-far { opacity: 0.09; }
+
+  /* The pulse rides on the group rather than on each shape, so it multiplies
+     with the weight each layer is drawn at instead of flattening all three
+     to the same value. */
   @media (prefers-reduced-motion: no-preference) {
-    .forest .link-flow {
+    .forest .flow-layer {
       animation: flow-pulse 2.6s ease-in-out infinite;
     }
   }
 
   /* Same pulse as the halo, in the one property SVG animates everywhere. */
   @keyframes flow-pulse {
-    0%, 100% { opacity: 0.35; }
-    50% { opacity: 0.95; }
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
   }
 
   .forest .node { cursor: grab; }
@@ -1173,12 +1188,25 @@
         var bg = svg.append("rect").attr("class", "bg").attr("width", "100%").attr("height", "100%");
         var viewport = svg.append("g");
         var linkLayer = viewport.append("g");
-        var linkFlowLayer = viewport.append("g"); // the "flowing toward parent" overlay, above the edges
+        // The moving light that travels up each edge toward the parent. It was
+        // a drop-shadow filter around a single shape, but WebKit won't animate
+        // a filter on an SVG element, so on iOS nothing glowed. It's built out
+        // of plain shapes now: the same tapered form drawn a few times, each
+        // wider, longer and fainter than the last, which stacks up into a soft
+        // edge. Widest and faintest first, so the bright core lands on top.
+        var FLOW_LAYERS = [
+          { cls: "link-flow-far",  base: 3.2, bulge: 9,   reach: 0.20 },
+          { cls: "link-flow-near", base: 2.2, bulge: 5.5, reach: 0.14 },
+          { cls: "link-flow",      base: 0.75, bulge: 1.5, reach: 0.09 }
+        ];
+        var flowLayers = FLOW_LAYERS.map(function (spec) {
+          return { spec: spec, layer: viewport.append("g").attr("class", "flow-layer"), sel: null };
+        });
         var versionLayer = viewport.append("g");  // ties between versions of the same idea
         var foldLayer = viewport.append("g");     // the fold-these-away controls
         var nodeLayer = viewport.append("g");
         var linkSel = linkLayer.selectAll("path");
-        var linkFlowSel = linkFlowLayer.selectAll("path");
+
         var versionSel = versionLayer.selectAll("path");
         // Each pile with the versions it sits between, so it can be placed
         // from them on every tick (see placePiles).
@@ -1788,15 +1816,18 @@
         // scale the tapered shape itself isn't really visible -- what actually
         // reads on screen is a faint glow traveling along the edge, which is
         // the effect we're going for.
-        function flowPolygon(d, tc) {
+        function flowPolygon(d, tc, base, bulge, reach) {
+          base = base === undefined ? FLOW_WIDTH_BASE : base;
+          bulge = bulge === undefined ? FLOW_BULGE : bulge;
+          reach = reach === undefined ? FLOW_HALF_T : reach;
           var top = [], bottom = [];
           for (var i = 0; i <= FLOW_SAMPLES; i++) {
             var s = -1 + (2 * i) / FLOW_SAMPLES;
-            var t = Math.max(0, Math.min(1, tc + s * FLOW_HALF_T));
+            var t = Math.max(0, Math.min(1, tc + s * reach));
             var p = bezierPoint(d, t);
             var tan = bezierTangent(d, t);
             var nx = -tan.y, ny = tan.x;
-            var hw = (FLOW_WIDTH_BASE + (FLOW_BULGE - FLOW_WIDTH_BASE) * Math.cos(s * Math.PI / 2)) / 2;
+            var hw = (base + (bulge - base) * Math.cos(s * Math.PI / 2)) / 2;
             top.push((p.x + nx * hw) + "," + (p.y + ny * hw));
             bottom.push((p.x - nx * hw) + "," + (p.y - ny * hw));
           }
@@ -1813,15 +1844,19 @@
         // half a period apart, for a continuous stream rather than one pulse
         // chasing an empty gap.
         function updateFlowShapes() {
-          if (reduceMotion) {
-            linkFlowSel.attr("d", function (d) { return flowPolygon(d, 0.5); });
-            return;
+          var at = [0.5];
+          if (!reduceMotion) {
+            var elapsed = Date.now() - flowStart;
+            at = [1 - (elapsed % FLOW_PERIOD) / FLOW_PERIOD,
+                  1 - ((elapsed + FLOW_PERIOD / 2) % FLOW_PERIOD) / FLOW_PERIOD];
           }
-          var elapsed = Date.now() - flowStart;
-          var phase1 = (elapsed % FLOW_PERIOD) / FLOW_PERIOD;
-          var phase2 = ((elapsed + FLOW_PERIOD / 2) % FLOW_PERIOD) / FLOW_PERIOD;
-          linkFlowSel.attr("d", function (d) {
-            return flowPolygon(d, 1 - phase1) + " " + flowPolygon(d, 1 - phase2);
+          flowLayers.forEach(function (entry) {
+            if (!entry.sel) return;
+            entry.sel.attr("d", function (d) {
+              return at.map(function (tc) {
+                return flowPolygon(d, tc, entry.spec.base, entry.spec.bulge, entry.spec.reach);
+              }).join(" ");
+            });
           });
         }
 
@@ -2322,10 +2357,13 @@
             .classed("is-adoptable", function (d) { return d.target.adoptable; });
 
           var flowLinks = links.filter(function (d) { return d.target.adoptable; });
-          linkFlowSel = linkFlowLayer.selectAll("path")
-            .data(flowLinks, function (d) { return d.source.id + ">" + d.target.id; })
-            .join("path")
-            .attr("class", "link-flow");
+          var flowKey = function (d) { return d.source.id + ">" + d.target.id; };
+          flowLayers.forEach(function (entry) {
+            entry.sel = entry.layer.selectAll("path")
+              .data(flowLinks, flowKey)
+              .join("path")
+              .attr("class", entry.spec.cls);
+          });
 
           foldSel = foldLayer.selectAll("g.fold-control")
             .data(openRuns, function (d) { return d.baseId; })
