@@ -569,8 +569,13 @@
 
   /* The look is Bootstrap's .form-range; this keeps the touch handling and
      cursor. */
-  .timeline-slider { touch-action: none; cursor: ew-resize; }
-  .timeline-track-wrap, .timeline-track-wrap * { cursor: ew-resize !important; }
+  /* A tap anywhere on the timeline jumps there, so it reads as clickable;
+     only the knob itself, and any drag in progress, shows the drag arrows. */
+  .timeline-slider { touch-action: none; cursor: pointer; }
+  .timeline-slider::-webkit-slider-runnable-track { cursor: pointer; }
+  .timeline-slider::-moz-range-track { cursor: pointer; }
+  .timeline-slider::-webkit-slider-thumb { width: 1.25rem; height: 1.25rem; margin-top: -0.375rem; }
+  .timeline-slider::-moz-range-thumb { width: 1.25rem; height: 1.25rem; }
   /* The native thumb only does the dragging; the active tick drawn over it
      is what you see, so it can be hollow or solid like the ideas. */
   .timeline-slider::-webkit-slider-thumb { background: transparent; box-shadow: none !important; cursor: ew-resize; }
@@ -597,6 +602,7 @@
     background: var(--field-bg);
     border: 2px solid var(--field-border);
     pointer-events: auto;
+    cursor: pointer;
     transition: border-color 150ms ease;
     /* Same fix as .timeline-slider: a drag that starts on a tick (rather
        than the thumb itself) needs the browser to hand the whole gesture to
@@ -611,9 +617,11 @@
      nothing does. A point with no ideas yet stays plain. */
   .timeline-tick.is-live { background: var(--node-root); border-color: var(--node-root); }
   .timeline-tick.is-dead { border-color: var(--node-root); }
+  /* The knob: bigger than a tick and ringed so it stands apart from them. */
   .timeline-tick.is-active {
-    width: 1rem;
-    height: 1rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    box-shadow: 0 0 0 2px #fff, 0 1px 4px 2px rgba(0, 0, 0, 0.3);
     background: var(--bs-secondary-color);
     border-color: var(--bs-secondary-color);
     /* Now that ticks line up exactly with the thumb's position, the active
@@ -2750,11 +2758,11 @@
           var tick = document.createElement("button");
           tick.type = "button";
           tick.className = "timeline-tick" + (i === cursor ? " is-active" : "") + ideaState(entry);
-          // The slider's thumb is inset by half its width (1rem) from each
+          // The slider's thumb is inset by half its width (1.25rem) from each
           // edge of the track, so a tick's position has to match that same
           // inset rather than spanning the full 0-100% width.
           var frac = n <= 1 ? 0 : i / (n - 1);
-          tick.style.left = "calc(" + frac + " * (100% - 1rem) + 0.5rem)";
+          tick.style.left = "calc(" + frac + " * (100% - 1.25rem) + 0.625rem)";
           var text = summaryFor(entry);
           tick.title = text + " — " + formatTime(entry.time);
           tick.setAttribute("aria-label", text + ", " + formatTime(entry.time));
@@ -2812,7 +2820,7 @@
         var track = timelineSlider.getBoundingClientRect();
         // Matches the tick placement formula above: the thumb (and so the
         // usable track) is inset 10px from each edge.
-        var inset = parseFloat(getComputedStyle(document.documentElement).fontSize) / 2;
+        var inset = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.625;
         var usable = Math.max(1, track.width - 2 * inset);
         var frac = (clientX - track.left - inset) / usable;
         frac = Math.max(0, Math.min(1, frac));
