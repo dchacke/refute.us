@@ -5,32 +5,100 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Refute Us</title>
 <style>
-  /* Dark mode is always on, regardless of the system color scheme. */
+  /* Palette borrowed from Veritula (application.css): light and dark follow the
+     system setting. --theme-color is Veritula's own red, an RGB triplet. */
   :root {
-    --left: #262c3a;
-    --right: #0d1220;
-    --divider: #8a7550;
-    --ink: #e6e9f0;
-    --muted: #a3acc0;
-    --rule: #3d465a;
-    --field-bg: #1a1f2b;
-    --field-border: #4f5970;
-    --button-bg: #c9b184;
-    --button-fg: #0d1220;
-    --focus: #c9b184;
-    /* the canvas is dark in both themes, so these stay the same */
-    --link: rgba(232, 235, 240, 0.6);
-    --node-root: #d4b982;
-    --node-crit: #ff5a52;
-    --label: #e6e9f0;
-    --label-dim: rgba(230, 233, 240, 0.8);
-    --tip-bg: #e8ebf0;
-    --tip-fg: #1b2233;
-    --tip-muted: #566078;
+    color-scheme: light dark;
+    --theme-color: 220, 2, 40;
+    --red: rgb(var(--theme-color));
+    --left: #fffdfa;
+    --right: #f7f1e4;
+    --divider: #d7d7d7;
+    --ink: #212529;
+    --muted: #424242;
+    --rule: #d7d7d7;
+    --field-bg: #ffffff;
+    --field-border: #b8b3a6;
+    --button-bg: var(--red);
+    --button-fg: #ffffff;
+    --focus: rgb(13, 84, 191);
+    --link: rgba(33, 37, 41, 0.45);
+    --node-root: rgb(13, 84, 191);
+    --node-crit: var(--red);
+    --label: #212529;
+    --label-dim: rgba(33, 37, 41, 0.75);
+    --tip-bg: #212529;
+    --tip-fg: #f7f1e4;
+    --tip-muted: #c7c7c7;
+    --lift: var(--red);
+    --halo: var(--red);
+    --hover-bg: rgba(0, 0, 0, 0.06);
+    --track: #d7d7d7;
+    --thumb: #212529;
+    --danger: #b3261e;
+    --scrim: rgba(26, 26, 26, 0.45);
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --theme-color: 249, 68, 73;
+      --left: #212529;
+      --right: #1a1a1a;
+      --divider: #3a3d40;
+      --ink: #dee2e6;
+      --muted: #c7c7c7;
+      --rule: #3a3d40;
+      --field-bg: rgb(33, 37, 41);
+      --field-border: #4b5259;
+      --button-fg: #ffffff;
+      --focus: rgb(144, 192, 251);
+      --link: rgba(222, 226, 230, 0.55);
+      --node-root: rgb(62, 140, 255);
+      --label: #eceff1;
+      --label-dim: rgba(236, 239, 241, 0.8);
+      --tip-bg: #dee2e6;
+      --tip-fg: #1a1a1a;
+      --tip-muted: #424242;
+      --lift: #ffffff;
+      --halo: #ffffff;
+      --hover-bg: rgba(255, 255, 255, 0.08);
+      --track: #5a6068;
+      --thumb: #ffffff;
+      --danger: #9c1f1f;
+      --scrim: rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --theme-color: 249, 68, 73;
+    --left: #212529;
+    --right: #1a1a1a;
+    --divider: #3a3d40;
+    --ink: #dee2e6;
+    --muted: #c7c7c7;
+    --rule: #3a3d40;
+    --field-bg: rgb(33, 37, 41);
+    --field-border: #4b5259;
+    --button-fg: #ffffff;
+    --focus: rgb(144, 192, 251);
+    --link: rgba(222, 226, 230, 0.55);
+    --node-root: rgb(62, 140, 255);
+    --label: #eceff1;
+    --label-dim: rgba(236, 239, 241, 0.8);
+    --tip-bg: #dee2e6;
+    --tip-fg: #1a1a1a;
+    --tip-muted: #424242;
+    --lift: #ffffff;
+    --halo: #ffffff;
+    --hover-bg: rgba(255, 255, 255, 0.08);
+    --track: #5a6068;
+    --thumb: #ffffff;
+    --danger: #9c1f1f;
+    --scrim: rgba(0, 0, 0, 0.6);
+  }
+
 
   html {
     height: 100%;
@@ -97,7 +165,7 @@
      the parent" cue both live on the moving glow riding on top of it
      (below), rather than on the edge itself. */
   .forest .link.is-adoptable {
-    stroke: color-mix(in srgb, var(--node-crit) 85%, white);
+    stroke: color-mix(in srgb, var(--node-crit) 85%, var(--lift));
     opacity: 1;
   }
 
@@ -110,7 +178,7 @@
      brightening rather than a visibly separate shape, which is the effect
      we want. */
   .forest .link-flow {
-    fill: color-mix(in srgb, var(--node-crit) 45%, white);
+    fill: color-mix(in srgb, var(--node-crit) 45%, var(--lift));
     stroke: none;
     opacity: 0.9;
     pointer-events: none;
@@ -121,7 +189,7 @@
      rather than ending in an edge. */
   .forest .link-flow-near,
   .forest .link-flow-far {
-    fill: color-mix(in srgb, var(--node-crit) 60%, white);
+    fill: color-mix(in srgb, var(--node-crit) 60%, var(--lift));
     stroke: none;
     pointer-events: none;
   }
@@ -271,6 +339,8 @@
     pointer-events: none;
   }
 
+  #halo-fade stop { stop-color: var(--halo); }
+
   @keyframes adopt-glow {
     0%, 100% { opacity: 0; }
     50% { opacity: 1; }
@@ -323,14 +393,14 @@
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--label);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--hover-bg);
     border: 1px solid var(--link);
     border-radius: 999px;
     cursor: pointer;
     transition: background-color 150ms ease, transform 100ms ease;
   }
 
-  .fit-btn:hover { background: rgba(255, 255, 255, 0.16); }
+  .fit-btn:hover { background: var(--hover-bg); border-color: var(--label); }
   .fit-btn:active { transform: translateY(1px); }
 
   .reset-btn { right: auto; left: 0.75rem; width: auto; }
@@ -524,13 +594,13 @@
 
   .timeline-slider::-webkit-slider-runnable-track {
     height: 4px;
-    background: color-mix(in srgb, var(--rule) 55%, white);
+    background: var(--track);
     border-radius: 2px;
   }
 
   .timeline-slider::-moz-range-track {
     height: 4px;
-    background: color-mix(in srgb, var(--rule) 55%, white);
+    background: var(--track);
     border-radius: 2px;
   }
 
@@ -541,7 +611,7 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: #ffffff;
+    background: var(--thumb);
     border: none;
     box-shadow: none;
   }
@@ -552,7 +622,7 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: #ffffff;
+    background: var(--thumb);
     border: none;
     box-shadow: none;
   }
@@ -620,7 +690,7 @@
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
-    background: rgba(10, 12, 18, 0.55);
+    background: var(--scrim);
     opacity: 0;
     transition: opacity 180ms ease;
   }
@@ -802,7 +872,7 @@
     border: 1px solid var(--field-border);
   }
 
-  .modal-btn--ghost:hover { background: rgba(255, 255, 255, 0.08); }
+  .modal-btn--ghost:hover { background: var(--hover-bg); }
 
   .modal-btn--primary {
     color: var(--button-fg);
@@ -810,15 +880,15 @@
     border: 0;
   }
 
-  .modal-btn--primary:hover { background: color-mix(in srgb, var(--button-bg) 85%, white); }
+  .modal-btn--primary:hover { background: color-mix(in srgb, var(--button-bg) 85%, black); }
 
   .modal-btn--danger {
     color: #ffffff;
-    background: #b3261e;
+    background: var(--danger);
     border: 0;
   }
 
-  .modal-btn--danger:hover { background: color-mix(in srgb, #b3261e 85%, white); }
+  .modal-btn--danger:hover { background: color-mix(in srgb, var(--danger) 85%, white); }
 
   .modal-btn:active { transform: translateY(1px); }
 
