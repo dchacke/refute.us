@@ -283,14 +283,15 @@
      circle.core alone. */
   .forest .node { filter: drop-shadow(0 1.5px 2px rgba(0, 0, 0, 0.35)); }
 
-  .forest .node.is-highlighted circle.core,
   /* Solid discs carry no outline of their own. */
   .forest .node.is-adoptable:not(.is-highlighted) circle.core,
   .forest .node.is-root.is-adoptable:not(.is-highlighted) circle.core { stroke: none; }
   .legend .key-on { stroke: none !important; }
 
-  .forest .node.is-root.is-highlighted circle.core {
-    stroke: var(--label);
+  /* Hover/focus: a white ring on any idea, top-level or criticism, in both
+     themes. */
+  .forest .node.is-highlighted circle.core {
+    stroke: #fff !important;
     stroke-width: 2.5px;
   }
 
