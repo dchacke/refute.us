@@ -284,6 +284,11 @@
   .forest .node { filter: drop-shadow(0 1.5px 2px rgba(0, 0, 0, 0.35)); }
 
   .forest .node.is-highlighted circle.core,
+  /* Solid discs carry no outline of their own. */
+  .forest .node.is-adoptable:not(.is-highlighted) circle.core,
+  .forest .node.is-root.is-adoptable:not(.is-highlighted) circle.core { stroke: none; }
+  .legend .key-on { stroke: none !important; }
+
   .forest .node.is-root.is-highlighted circle.core {
     stroke: var(--label);
     stroke-width: 2.5px;
@@ -565,6 +570,11 @@
   /* The look is Bootstrap's .form-range; this keeps the touch handling and
      cursor. */
   .timeline-slider { touch-action: none; cursor: ew-resize; }
+  .timeline-track-wrap, .timeline-track-wrap * { cursor: ew-resize !important; }
+  /* The native thumb only does the dragging; the active tick drawn over it
+     is what you see, so it can be hollow or solid like the ideas. */
+  .timeline-slider::-webkit-slider-thumb { background: transparent; box-shadow: none !important; cursor: ew-resize; }
+  .timeline-slider::-moz-range-thumb { background: transparent; box-shadow: none !important; cursor: ew-resize; }
   .timeline-slider:disabled { cursor: default; }
 
   .timeline-ticks {
@@ -587,7 +597,6 @@
     background: var(--field-bg);
     border: 2px solid var(--field-border);
     pointer-events: auto;
-    cursor: pointer;
     transition: border-color 150ms ease;
     /* Same fix as .timeline-slider: a drag that starts on a tick (rather
        than the thumb itself) needs the browser to hand the whole gesture to
@@ -603,8 +612,10 @@
   .timeline-tick.is-live { background: var(--node-root); border-color: var(--node-root); }
   .timeline-tick.is-dead { border-color: var(--node-root); }
   .timeline-tick.is-active {
-    background: var(--thumb);
-    border-color: var(--thumb);
+    width: 1rem;
+    height: 1rem;
+    background: var(--bs-secondary-color);
+    border-color: var(--bs-secondary-color);
     /* Now that ticks line up exactly with the thumb's position, the active
        one sits right on top of it -- pass clicks through so the thumb
        underneath can still be grabbed and dragged. */
@@ -612,7 +623,7 @@
   }
 
   .timeline-tick.is-active.is-live { background: var(--node-root); border-color: var(--node-root); }
-  .timeline-tick.is-active.is-dead { background: var(--thumb); border-color: var(--node-root); }
+  .timeline-tick.is-active.is-dead { background: var(--field-bg); border-color: var(--node-root); border-width: 2.5px; }
   .timeline-tick:hover { border-color: var(--focus); }
   .timeline-tick:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
@@ -2801,8 +2812,9 @@
         var track = timelineSlider.getBoundingClientRect();
         // Matches the tick placement formula above: the thumb (and so the
         // usable track) is inset 10px from each edge.
-        var usable = Math.max(1, track.width - 20);
-        var frac = (clientX - track.left - 10) / usable;
+        var inset = parseFloat(getComputedStyle(document.documentElement).fontSize) / 2;
+        var usable = Math.max(1, track.width - 2 * inset);
+        var frac = (clientX - track.left - inset) / usable;
         frac = Math.max(0, Math.min(1, frac));
         return Math.round(frac * (history.length - 1));
       }
@@ -2811,6 +2823,15 @@
         if (idx !== cursor) restoreTo(idx);
         setTimelineText(formatTime(history[cursor].time));
       }
+      // Any press on the timeline reads as a drag until it's let go.
+      timelineTrackWrap.addEventListener("pointerdown", function () {
+        document.body.classList.add("is-scrubbing");
+      });
+      ["pointerup", "pointercancel"].forEach(function (type) {
+        window.addEventListener(type, function () {
+          if (tickDragPointerId === null) document.body.classList.remove("is-scrubbing");
+        });
+      });
       timelineTrackWrap.addEventListener("pointerdown", function (e) {
         if (!e.target.classList || !e.target.classList.contains("timeline-tick")) return;
         tickDragPointerId = e.pointerId;
