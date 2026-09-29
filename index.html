@@ -681,7 +681,10 @@
     touch-action: none;
   }
 
-  .timeline-tick.is-dead { border-color: var(--red); }
+  /* Drawn like a top-level idea: solid when something survives, hollow when
+     nothing does. A point with no ideas yet stays plain. */
+  .timeline-tick.is-live { background: var(--node-root); border-color: var(--node-root); }
+  .timeline-tick.is-dead { border-color: var(--node-root); }
   .timeline-tick.is-active {
     background: var(--thumb);
     border-color: var(--thumb);
@@ -691,7 +694,8 @@
     pointer-events: none;
   }
 
-  .timeline-tick.is-active.is-dead { background: var(--red); border-color: var(--red); }
+  .timeline-tick.is-active.is-live { background: var(--node-root); border-color: var(--node-root); }
+  .timeline-tick.is-active.is-dead { background: var(--thumb); border-color: var(--node-root); }
   .timeline-tick:hover { border-color: var(--focus); }
   .timeline-tick:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
@@ -2996,18 +3000,19 @@
         }
       }
 
-      // A point in the timeline where there are ideas and none of them
-      // survive. Remembered per snapshot, which never changes once recorded.
-      var deadCache = new WeakMap();
-      function nothingAdoptable(entry) {
+      // How a point in the timeline stands: " is-live" when some top-level idea
+      // survives, " is-dead" when there are ideas and none do, "" when there
+      // are none. Remembered per snapshot, which never changes once recorded.
+      var stateCache = new WeakMap();
+      function ideaState(entry) {
         var snap = entry.snapshot;
-        if (!snap) return false;
-        if (deadCache.has(snap)) return deadCache.get(snap);
+        if (!snap) return "";
+        if (stateCache.has(snap)) return stateCache.get(snap);
         var list = graphToIdeas(snap), status = {};
         evaluate(list, status);
-        var dead = list.length > 0 && !list.some(function (r) { return status[r.id]; });
-        deadCache.set(snap, dead);
-        return dead;
+        var out = !list.length ? "" : list.some(function (r) { return status[r.id]; }) ? " is-live" : " is-dead";
+        stateCache.set(snap, out);
+        return out;
       }
 
       function updateTimelineUI() {
@@ -3026,7 +3031,7 @@
         history.forEach(function (entry, i) {
           var tick = document.createElement("button");
           tick.type = "button";
-          tick.className = "timeline-tick" + (i === cursor ? " is-active" : "") + (nothingAdoptable(entry) ? " is-dead" : "");
+          tick.className = "timeline-tick" + (i === cursor ? " is-active" : "") + ideaState(entry);
           // The slider's thumb is inset by half its width (20px) from each
           // edge of the track, so a tick's position has to match that same
           // inset rather than spanning the full 0-100% width.
