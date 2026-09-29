@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Refute Us</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <style>
   /* Palette borrowed from Veritula (application.css): light and dark follow the
      system setting. --theme-color is Veritula's own red, an RGB triplet. */
@@ -32,11 +35,16 @@
     --tip-muted: #c7c7c7;
     --lift: var(--red);
     --halo: var(--red);
+    --neutral-bg: rgb(220, 220, 220);
+    --neutral-hover: rgb(210, 210, 210);
+    --halo-root: #6c757d;
     --hover-bg: rgba(0, 0, 0, 0.06);
     --track: #d7d7d7;
     --thumb: #212529;
     --danger: #b3261e;
     --scrim: rgba(26, 26, 26, 0.45);
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif;
+    --serif: "EB Garamond", eb-garamond, Georgia, serif;
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -64,6 +72,9 @@
       --tip-muted: #424242;
       --lift: #ffffff;
       --halo: #ffffff;
+      --neutral-bg: rgb(80, 80, 80);
+      --neutral-hover: rgb(70, 70, 70);
+      --halo-root: #adb5bd;
       --hover-bg: rgba(255, 255, 255, 0.08);
       --track: #5a6068;
       --thumb: #ffffff;
@@ -92,6 +103,9 @@
     --tip-muted: #424242;
     --lift: #ffffff;
     --halo: #ffffff;
+    --neutral-bg: rgb(80, 80, 80);
+    --neutral-hover: rgb(70, 70, 70);
+    --halo-root: #adb5bd;
     --hover-bg: rgba(255, 255, 255, 0.08);
     --track: #5a6068;
     --thumb: #ffffff;
@@ -113,7 +127,7 @@
     margin: 0;
     background: var(--right);
     color: var(--ink);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--sans);
   }
 
   .app {
@@ -340,6 +354,8 @@
   }
 
   #halo-fade stop { stop-color: var(--halo); }
+  #halo-fade-root stop { stop-color: var(--halo-root); }
+  .forest .node.is-root .halo { fill: url(#halo-fade-root); }
 
   @keyframes adopt-glow {
     0%, 100% { opacity: 0; }
@@ -348,7 +364,8 @@
 
   .forest .node text {
     fill: var(--label);
-    font-size: 10.5px;
+    font-family: var(--serif);
+    font-size: 12px;
     font-variant-numeric: tabular-nums;
     paint-order: stroke;
     stroke: var(--right);
@@ -357,13 +374,13 @@
     pointer-events: none;
   }
 
-  .forest .node.is-root text { font-size: 11.5px; font-weight: 600; }
+  .forest .node.is-root text { font-size: 13px; font-weight: 600; }
   .forest .node:not(.is-adoptable) text { fill: var(--label-dim); }
 
   /* A short preview of a criticism's own text, sitting just under its node. */
   .forest .node text.preview {
     text-anchor: middle;
-    font-size: 9px;
+    font-size: 10.5px;
   }
 
   /* Shown only until the first idea exists, since that's otherwise the only
@@ -415,8 +432,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 0.95rem;
+    font-family: var(--serif);
+    font-size: 1.05rem;
     font-style: italic;
     border-radius: 50%;
   }
@@ -443,6 +460,8 @@
   }
 
   .tip-text {
+    font-family: var(--serif);
+    font-size: 1rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     display: -webkit-box;
@@ -813,7 +832,8 @@
     min-height: 8rem;
     padding: 0.75rem 0.875rem;
     font: inherit;
-    font-size: 1rem;
+    font-family: var(--serif);
+    font-size: 1.125rem;
     line-height: 1.5;
     color: var(--ink);
     background: var(--field-bg);
@@ -836,6 +856,7 @@
   .modal-message a:hover { text-decoration: none; }
 
   .modal-quote {
+    font-family: var(--serif);
     margin: 0;
     padding: 0.5rem 0 0.5rem 0.875rem;
     border-left: 3px solid var(--field-border);
@@ -881,6 +902,14 @@
   }
 
   .modal-btn--primary:hover { background: color-mix(in srgb, var(--button-bg) 85%, black); }
+
+  .modal-btn--neutral {
+    color: var(--ink);
+    background: var(--neutral-bg);
+    border: 0;
+  }
+
+  .modal-btn--neutral:hover { background: var(--neutral-hover); }
 
   .modal-btn--danger {
     color: #ffffff;
@@ -1254,6 +1283,10 @@
           glow.append("stop").attr("offset", "48%").attr("stop-color", "#fff").attr("stop-opacity", 0.42);
           glow.append("stop").attr("offset", "74%").attr("stop-color", "#fff").attr("stop-opacity", 0.16);
           glow.append("stop").attr("offset", "100%").attr("stop-color", "#fff").attr("stop-opacity", 0);
+          var glowRoot = defs.append("radialGradient").attr("id", "halo-fade-root");
+          glowRoot.append("stop").attr("offset", "48%").attr("stop-opacity", 0.42);
+          glowRoot.append("stop").attr("offset", "74%").attr("stop-opacity", 0.16);
+          glowRoot.append("stop").attr("offset", "100%").attr("stop-opacity", 0);
         })();
         var bg = svg.append("rect").attr("class", "bg").attr("width", "100%").attr("height", "100%");
         var viewport = svg.append("g");
@@ -3171,7 +3204,7 @@
           (opts.items || []).forEach(function (item) {
             var btn = document.createElement("button");
             btn.type = "button";
-            btn.className = "modal-btn " + (item.danger ? "modal-btn--danger" : "modal-btn--primary");
+            btn.className = "modal-btn " + (item.danger ? "modal-btn--danger" : item.neutral ? "modal-btn--neutral" : "modal-btn--primary");
             btn.textContent = item.label;
             btn.addEventListener("click", function () {
               closeModal();
@@ -3461,7 +3494,7 @@
           quote: target.text,
           items: [
             { label: "Criticize", onPick: function () { criticizeIdea(target); } },
-            { label: "Revise", onPick: function () { reviseIdea(target); } },
+            { label: "Revise", neutral: true, onPick: function () { reviseIdea(target); } },
             { label: "Delete", danger: true, onPick: function () { confirmDelete(target, d); } }
           ]
         });
