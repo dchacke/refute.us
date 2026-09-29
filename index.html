@@ -57,6 +57,7 @@
     --lift: var(--red);
     --halo: var(--red);
     --halo-root: #6c757d;
+    --hover-ring: #6c757d;
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -78,6 +79,7 @@
     --lift: #ffffff;
     --halo: #ffffff;
     --halo-root: #adb5bd;
+    --hover-ring: #fff;
   }
 
   /* ---- from Veritula's application.css ---- */
@@ -288,10 +290,10 @@
   .forest .node.is-root.is-adoptable:not(.is-highlighted) circle.core { stroke: none; }
   .legend .key-on { stroke: none !important; }
 
-  /* Hover/focus: a white ring on any idea, top-level or criticism, in both
-     themes. */
+  /* Hover/focus: a ring on any idea, top-level or criticism: gray on the
+     light background, white on the dark one. */
   .forest .node.is-highlighted circle.core {
-    stroke: #fff !important;
+    stroke: var(--hover-ring) !important;
     stroke-width: 2.5px;
   }
 
