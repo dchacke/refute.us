@@ -365,7 +365,7 @@
   .forest .node text {
     fill: var(--label);
     font-family: var(--serif);
-    font-size: 12px;
+    font-size: 14.4px;
     font-variant-numeric: tabular-nums;
     paint-order: stroke;
     stroke: var(--right);
@@ -374,13 +374,13 @@
     pointer-events: none;
   }
 
-  .forest .node.is-root text { font-size: 13px; font-weight: 600; }
+  .forest .node.is-root text { font-size: 15.6px; font-weight: 600; }
   .forest .node:not(.is-adoptable) text { fill: var(--label-dim); }
 
   /* A short preview of a criticism's own text, sitting just under its node. */
   .forest .node text.preview {
     text-anchor: middle;
-    font-size: 10.5px;
+    font-size: 12.6px;
   }
 
   /* Shown only until the first idea exists, since that's otherwise the only
@@ -433,7 +433,7 @@
     align-items: center;
     justify-content: center;
     font-family: var(--serif);
-    font-size: 1.05rem;
+    font-size: 1.26rem;
     font-style: italic;
     border-radius: 50%;
   }
@@ -461,7 +461,7 @@
 
   .tip-text {
     font-family: var(--serif);
-    font-size: 1rem;
+    font-size: 1.2rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     display: -webkit-box;
@@ -681,15 +681,17 @@
     touch-action: none;
   }
 
+  .timeline-tick.is-dead { border-color: var(--red); }
   .timeline-tick.is-active {
-    background: var(--button-bg);
-    border-color: var(--button-bg);
+    background: var(--thumb);
+    border-color: var(--thumb);
     /* Now that ticks line up exactly with the thumb's position, the active
        one sits right on top of it -- pass clicks through so the thumb
        underneath can still be grabbed and dragged. */
     pointer-events: none;
   }
 
+  .timeline-tick.is-active.is-dead { background: var(--red); border-color: var(--red); }
   .timeline-tick:hover { border-color: var(--focus); }
   .timeline-tick:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
@@ -833,7 +835,7 @@
     padding: 0.75rem 0.875rem;
     font: inherit;
     font-family: var(--serif);
-    font-size: 1.125rem;
+    font-size: 1.35rem;
     line-height: 1.5;
     color: var(--ink);
     background: var(--field-bg);
@@ -861,7 +863,7 @@
     padding: 0.5rem 0 0.5rem 0.875rem;
     border-left: 3px solid var(--field-border);
     color: var(--muted);
-    font-size: 0.9rem;
+    font-size: 1.08rem;
     line-height: 1.5;
     font-style: italic;
     white-space: pre-wrap;
@@ -2994,6 +2996,20 @@
         }
       }
 
+      // A point in the timeline where there are ideas and none of them
+      // survive. Remembered per snapshot, which never changes once recorded.
+      var deadCache = new WeakMap();
+      function nothingAdoptable(entry) {
+        var snap = entry.snapshot;
+        if (!snap) return false;
+        if (deadCache.has(snap)) return deadCache.get(snap);
+        var list = graphToIdeas(snap), status = {};
+        evaluate(list, status);
+        var dead = list.length > 0 && !list.some(function (r) { return status[r.id]; });
+        deadCache.set(snap, dead);
+        return dead;
+      }
+
       function updateTimelineUI() {
         var n = history.length;
         timelineFooter.hidden = n <= 1;
@@ -3010,7 +3026,7 @@
         history.forEach(function (entry, i) {
           var tick = document.createElement("button");
           tick.type = "button";
-          tick.className = "timeline-tick" + (i === cursor ? " is-active" : "");
+          tick.className = "timeline-tick" + (i === cursor ? " is-active" : "") + (nothingAdoptable(entry) ? " is-dead" : "");
           // The slider's thumb is inset by half its width (20px) from each
           // edge of the track, so a tick's position has to match that same
           // inset rather than spanning the full 0-100% width.
