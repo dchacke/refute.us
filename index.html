@@ -713,6 +713,12 @@
     </footer>
   </div>
 
+  <!-- Touch keyboards only open for focus that happens inside the tap itself,
+       but the modal's textarea isn't visible until it has faded in. This
+       invisible input takes focus during the tap and hands it to the
+       textarea once it is on screen, so the keyboard stays up. -->
+  <input id="kb-proxy" type="text" tabindex="-1" aria-hidden="true" autocomplete="off"
+         style="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0;font-size:16px;pointer-events:none">
   <div class="modal fade" id="modal-backdrop" tabindex="-1" aria-labelledby="modal-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
       <form class="modal-content" id="modal-form">
@@ -2936,6 +2942,7 @@
       var modalBackdrop = document.getElementById("modal-backdrop");
       var modalTitle = document.getElementById("modal-title");
       var modalTextarea = document.getElementById("modal-textarea");
+      var kbProxy = document.getElementById("kb-proxy");
       var modalChecks = document.getElementById("modal-checks");
       var modalMenu = document.getElementById("modal-menu");
       var modalQuote = document.getElementById("modal-quote");
@@ -3079,6 +3086,9 @@
         // entry, so a stray extra tap doesn't submit or delete anything.
         modalFocusTarget = modalMode === "form" ? modalTextarea : modalCancelBtn;
         if (bsModalShown) modalFocusTarget.focus();
+        else if (modalMode === "form" && window.matchMedia("(pointer: coarse)").matches) {
+          kbProxy.focus({ preventScroll: true });
+        }
         // The action buttons live outside .modal-scroll now, so focusing
         // one doesn't auto-scroll the content -- this is just a safety net
         // in case a modal is reopened without its scroll position resetting.
@@ -3141,6 +3151,7 @@
         // then, so it is done now.
         if (!modalOpen) { bsModal.hide(); return; }
         if (modalFocusTarget) modalFocusTarget.focus();
+        if (document.activeElement === kbProxy) kbProxy.blur();
       });
       document.addEventListener("keydown", function (e) {
         // Bootstrap won't take Escape while the dialog is still fading in.
