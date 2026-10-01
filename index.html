@@ -300,6 +300,13 @@
   /* A slow, subtle glow/pulse marks rationally adoptable nodes as "live".
      The halo is an ordinary circle with a soft radial fill, pulsed by its
      opacity -- see the note where it's built. */
+  /* Fingers are blunter than cursors: on coarse pointers, an invisible ring
+     around each node makes the tappable surface wider than the circle. */
+  .forest .node .touch-hit { fill: transparent; stroke: none; pointer-events: none; }
+  @media (pointer: coarse) {
+    .forest .node .touch-hit { pointer-events: all; }
+  }
+
   .forest .node .halo {
     fill: url(#halo-fade);
     stroke: none;
@@ -2272,6 +2279,7 @@
                 .attr("class", "node")
                 .attr("tabindex", 0)
                 .attr("role", "img");
+              g.append("circle").attr("class", "touch-hit");
               g.append("circle").attr("class", "halo");
               g.append("circle").attr("class", "stack stack-far");
               g.append("circle").attr("class", "stack stack-near");
@@ -2322,6 +2330,7 @@
             });
           nodeSel.select("circle.core").attr("r", radius);
           nodeSel.select("circle.halo").attr("r", function (d) { return radius(d) + 8; });
+          nodeSel.select("circle.touch-hit").attr("r", function (d) { return radius(d) + 10; });
           // The stack sits behind and to the left, so a pile reads as several
           // ideas folded into one.
           nodeSel.select("circle.stack-far")
