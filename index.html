@@ -1987,7 +1987,14 @@
             d.dragStartX = e.x; d.dragStartY = e.y;
             svg.classed("is-dragging", true);
           })
-          .on("drag", function (e, d) { d.fx = e.x; d.fy = e.y; })
+          .on("drag", function (e, d) {
+            d.fx = e.x; d.fy = e.y;
+            // A finger's tap ring shouldn't linger once it becomes a drag.
+            if (e.sourceEvent && (e.sourceEvent.pointerType === "touch" || /^touch/.test(e.sourceEvent.type)) &&
+                Math.hypot(e.x - d.dragStartX, e.y - d.dragStartY) >= 8) {
+              this.classList.remove("is-highlighted");
+            }
+          })
           .on("end", function (e, d) {
             // Let go and the node springs back to its place in the hierarchy.
             if (!e.active) sim.alphaTarget(0);
@@ -2291,10 +2298,13 @@
               g.call(drag)
                 .on("pointerenter", function (e, d) {
                   this.classList.add("is-highlighted");
+                  // No tooltip for fingers: a tap opens the modal, which
+                  // shows the full text, so the tip would only flicker.
+                  if (e.pointerType === "touch") return;
                   showTip(d);
                   placeTip(e.clientX, e.clientY);
                 })
-                .on("pointermove", function (e) { placeTip(e.clientX, e.clientY); })
+                .on("pointermove", function (e) { if (e.pointerType !== "touch") placeTip(e.clientX, e.clientY); })
                 .on("pointerleave", function () {
                   this.classList.remove("is-highlighted");
                   hideTip();
